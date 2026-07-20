@@ -1,7 +1,11 @@
-const CACHE = "cc-v1-2";
+const CACHE = "cc-v1-6";
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => c.addAll(CORE.map((u) => new Request(u, { cache: "no-cache" }))))
+      .then(() => self.skipWaiting())
+  );
 });
 self.addEventListener("activate", (e) => {
   e.waitUntil(
@@ -15,7 +19,7 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
   if (req.mode === "navigate") {
     e.respondWith(
-      fetch(req).then((r) => {
+      fetch(req, { cache: "no-cache" }).then((r) => {
         const cp = r.clone();
         caches.open(CACHE).then((c) => c.put("./index.html", cp));
         return r;
