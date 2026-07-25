@@ -1,4 +1,4 @@
-const CACHE = "cc-v1-6";
+const CACHE = "cc-v2-8";
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", (e) => {
   e.waitUntil(
@@ -17,6 +17,9 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
+  // Solo cachea recursos propios (app shell). Todo lo externo (Supabase u otras APIs) va directo a la red.
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
   if (req.mode === "navigate") {
     e.respondWith(
       fetch(req, { cache: "no-cache" }).then((r) => {
