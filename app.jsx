@@ -626,7 +626,7 @@ function SeguimientoSheet({ opps, onCerrar }) {
   );
 }
 
-function OppEditor({ opp, onGuardar, onEliminar, onCerrar, tc }) {
+function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc }) {
   const nueva = !opp.id;
   const [d, setD] = useState({
     cliente: opp.cliente || "", titulo: opp.titulo || "", etapa: opp.etapa || "visita",
@@ -737,6 +737,11 @@ function OppEditor({ opp, onGuardar, onEliminar, onCerrar, tc }) {
               <Send size={15} /> Pedir estatus al vendedor
             </button>
           ) : null}
+          {!nueva ? (
+            <button onClick={onDuplicar} className="w-full py-2.5 mb-2 rounded-xl border font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.borde, color: C.tinta, background: C.panel }}>
+              <Copy size={15} /> Duplicar oportunidad
+            </button>
+          ) : null}
           <div className="flex gap-2 pt-1">
             <button onClick={() => d.cliente.trim() && onGuardar({ ...opp, ...d, monto: d.monto === "" ? null : (d.moneda === "USD" ? Math.round(Number(d.monto) * (tc || 0)) : Number(d.monto)), moneda: d.moneda, montoOrig: d.moneda === "USD" && d.monto !== "" ? Number(d.monto) : null, tcCaptura: d.moneda === "USD" ? (tc || null) : null, margen: d.margen === "" ? null : Number(d.margen) })}
               className="flex-1 py-3 rounded-xl font-semibold" style={{ background: d.cliente.trim() ? C.tinta : C.borde, color: "#fff" }}>
@@ -784,6 +789,7 @@ const MANUAL = [
     "Regla de oro: toda oportunidad activa debe tener próxima acción con fecha. La app te lo recuerda con la franja ámbar y en el cierre del día.",
     "Activas son las que aún persigues: Acuerdo de visita, Cotizado y Por cerrar. Al recibir la OC dejan de ser activas porque ya se ganaron.",
     "Tarjeta: toca para editar (cliente, monto, margen, marca, plaza, vendedor y los números de referencia); Avanzar la pasa a la siguiente etapa; Agendar manda la próxima acción a Google Calendar.",
+    "Duplicar oportunidad: dentro de una oportunidad ya guardada, el botón Duplicar crea una copia con los mismos datos (con «(copia)» en el título) y abre el editor en ella para que cambies solo lo que sea distinto. Los cambios sin guardar no se copian: guarda antes de duplicar.",
     "El resumen muestra tres cifras: En juego (visita, cotizado y por cerrar), Pedido (OC y pedido) y Facturado (cobrado). Al elegir un mes en Acumulado por mes ves cuatro cifras de ese mes: Cotizado (por fecha de cotización, con el número de cotizaciones), Pedido, Facturado y Movimientos.",
     "Desde Cotizado aparecen N° y fecha de cotización; desde OC recibida, la OC del cliente con su fecha; desde Pedido, N° y fecha de pedido y de factura. Todo se muestra como etiquetas y sale en el CSV de Monday.",
     "Margen: captura el porcentaje con que vendiste; se muestra en la tarjeta y alimenta el cálculo de comisiones.",
@@ -835,6 +841,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v3.5 — Ahora puedes duplicar una oportunidad desde su ficha: crea una copia con los mismos datos y abre el editor para cambiar solo lo necesario. Ideal para cargar rápido oportunidades parecidas.",
     "v3.4 — Al filtrar por mes en el pipeline ahora también ves lo Cotizado en ese mes (según la fecha de cotización) y cuántas cotizaciones fueron, junto a Pedido, Facturado y Movimientos.",
     "v3.3 — El Excel del pipeline incluye una columna Monto (USD) junto a la de pesos: muestra el importe original en dólares si así se capturó, o el equivalente al tipo de cambio actual.",
     "v3.2 — El Excel del pipeline se reordenó siguiendo el flujo de venta: Oportunidad, Etapa, Cliente, Cotización y su fecha, Monto, Margen, OC, Pedido, Factura y sus fechas, y al final utilidad/comisión y datos de contacto.",
@@ -976,7 +983,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v3.4</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v3.5</div>
         </div>
       </div>
     </div>
@@ -1344,6 +1351,12 @@ export default function App() {
     guardar({ ...data, pipeline }); setOppEdit(null);
   };
   const delOpp = (id) => { guardar({ ...data, pipeline: data.pipeline.filter((o) => o.id !== id) }); setOppEdit(null); };
+  const duplicarOpp = (o) => {
+    const t = new Date().toISOString();
+    const copia = { ...o, id: uid(), titulo: [o.titulo, "(copia)"].filter(Boolean).join(" ").trim(), creada: t, actualizada: t };
+    guardar({ ...data, pipeline: [copia, ...data.pipeline] });
+    setOppEdit(copia);
+  };
   const setOppCampos = (id, campos) => guardar({ ...data, pipeline: data.pipeline.map((o) => o.id === id ? { ...o, ...campos } : o) });
   const guardarVisita = (v) => {
     const ts = new Date().toISOString();
@@ -2024,7 +2037,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <div className="text-xs text-center mt-4" style={{ ...mono, color: C.dim }}>Centro de Control v3.4 · PWA · nube</div>
+            <div className="text-xs text-center mt-4" style={{ ...mono, color: C.dim }}>Centro de Control v3.5 · PWA · nube</div>
           </div>
         )}
 
@@ -2241,7 +2254,7 @@ export default function App() {
       {verAsis && <AsistenteSheet onCerrar={() => setVerAsis(false)} onAplicar={aplicarAsistente} />}
 
       {oppEdit !== null && (
-        <OppEditor opp={oppEdit} onGuardar={guardarOpp} onEliminar={() => delOpp(oppEdit.id)} onCerrar={() => setOppEdit(null)} tc={data.tipoCambio || 0} />
+        <OppEditor opp={oppEdit} onGuardar={guardarOpp} onEliminar={() => delOpp(oppEdit.id)} onDuplicar={() => duplicarOpp(oppEdit)} onCerrar={() => setOppEdit(null)} tc={data.tipoCambio || 0} />
       )}
     </div>
   );
