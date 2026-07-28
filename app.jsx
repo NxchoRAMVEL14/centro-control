@@ -2,9 +2,10 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
   ListTodo, Timer, Briefcase, Target, FileDown, Plus, Play, Square,
   Circle, CheckCircle2, ChevronDown, ChevronRight, AlertTriangle, X,
-  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send
+  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, FileUp, FileSpreadsheet
 } from "lucide-react";
 import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos } from "./nube.jsx";
+import { leerXLSX, mapearMonday } from "./importar.jsx";
 const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
 import { ILUSTRACIONES } from "./ilustraciones.jsx";
 import { exportarXLSX } from "./xlsx.jsx";
@@ -553,6 +554,100 @@ function VisitasSheet({ visitas, opps, onNueva, onEditar, onCheckin, onCerrar })
   );
 }
 
+function ImportarSheet({ pipeline, tc, onImportar, onCerrar }) {
+  const [res, setRes] = useState(null);
+  const [error, setError] = useState("");
+  const [cargando, setCargando] = useState(false);
+  const [excl, setExcl] = useState({});
+  const [nombre, setNombre] = useState("");
+  const [verDup, setVerDup] = useState(false);
+  const onArchivo = async (ev) => {
+    const f = ev.target.files && ev.target.files[0]; ev.target.value = "";
+    if (!f) return;
+    setNombre(f.name); setError(""); setRes(null); setCargando(true);
+    try {
+      const buf = await f.arrayBuffer();
+      const hojas = leerXLSX(buf);
+      const r = mapearMonday(hojas, pipeline, tc);
+      if (r.error) { setError(r.error); setCargando(false); return; }
+      setRes(r); setExcl({}); setCargando(false);
+    } catch (e) { setError("No pude leer el archivo. Asegúrate de que sea un .xlsx exportado de Monday."); setCargando(false); }
+  };
+  const sel = res ? res.nuevas.filter((_, i) => !excl[i]) : [];
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,20,25,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><FileUp size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Importar oportunidades</span></span>
+          <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
+        </div>
+        <div className="p-4 pb-8 space-y-3">
+          <div className="text-xs" style={{ color: C.dim }}>Sube el Excel (.xlsx) que descargaste de tu tablero de Monday. Tomo cliente, título, monto (pesos o dólares), vendedor, cotización, OC, sucursal y notas. Las que ya tienes en tu pipeline (mismo folio de Monday o de cotización) se omiten automáticamente.</div>
+
+          <label className="w-full rounded-xl border border-dashed px-3 py-5 flex flex-col items-center justify-center gap-2 text-sm font-semibold" style={{ borderColor: C.ambar, color: C.tinta, background: C.panel, cursor: "pointer" }}>
+            <FileSpreadsheet size={22} style={{ color: C.ambar }} />
+            {cargando ? "Leyendo…" : nombre ? "Elegir otro archivo" : "Elegir archivo .xlsx de Monday"}
+            <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onArchivo} className="hidden" />
+          </label>
+          {nombre && !error ? <div className="text-xs" style={{ ...mono, color: C.dim }}>{nombre}</div> : null}
+          {error ? <div className="rounded-lg border p-3 text-xs" style={{ borderColor: C.rojo, background: C.rojoBg, color: "#8B2E2E" }}>{error}</div> : null}
+
+          {res ? (<>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border p-3 text-center" style={{ borderColor: C.ambar, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.ambar, letterSpacing: "0.06em" }}>Nuevas</div>
+                <div className="text-2xl font-semibold" style={mono}>{res.nuevas.length}</div>
+              </div>
+              <div className="rounded-xl border p-3 text-center" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.06em" }}>Ya existen</div>
+                <div className="text-2xl font-semibold" style={{ ...mono, color: C.dim }}>{res.duplicadas.length}</div>
+              </div>
+            </div>
+
+            {res.nuevas.length === 0 ? (
+              <Vacio>No hay oportunidades nuevas que importar; todas las del archivo ya están en tu pipeline.</Vacio>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Sec>Se importarán · {sel.length}</Sec>
+                  <button onClick={() => setExcl(Object.fromEntries(res.nuevas.map((_, i) => [i, sel.length > 0])))} className="text-xs font-semibold" style={{ color: C.azul }}>{sel.length > 0 ? "Quitar todas" : "Marcar todas"}</button>
+                </div>
+                <div className="space-y-1.5">
+                  {res.nuevas.map((o, i) => (
+                    <label key={i} className="flex items-start gap-2 rounded-lg border p-2 cursor-pointer" style={{ borderColor: C.borde, background: C.panel }}>
+                      <input type="checkbox" checked={!excl[i]} onChange={() => setExcl((x) => ({ ...x, [i]: !x[i] }))} className="mt-0.5" style={{ accentColor: C.ambar }} />
+                      <span className="min-w-0 flex-1">
+                        <span className="text-sm font-semibold block truncate">{o.cliente}</span>
+                        {o.titulo ? <span className="text-xs block truncate" style={{ color: C.dim }}>{o.titulo}</span> : null}
+                        <span className="text-xs" style={{ ...mono, color: C.dim }}>{o.monto != null ? fMXN(o.monto) : "sin monto"}{o.moneda === "USD" && o.montoOrig ? ` · US$${o.montoOrig}` : ""}{o.vendedor ? ` · ${o.vendedor}` : ""}{o.numCotizacion ? ` · ${o.numCotizacion}` : ""}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {res.duplicadas.length > 0 ? (
+              <div>
+                <button onClick={() => setVerDup((v) => !v)} className="text-xs font-semibold flex items-center gap-1" style={{ color: C.dim }}>
+                  <ChevronDown size={13} style={{ transform: verDup ? "rotate(180deg)" : "none" }} /> {verDup ? "Ocultar" : "Ver"} las {res.duplicadas.length} que se omiten
+                </button>
+                {verDup ? <div className="mt-1 space-y-1">{res.duplicadas.map((o, i) => <div key={i} className="text-xs px-2 py-1 rounded" style={{ background: "#fff", color: C.dim, border: `1px solid ${C.borde}` }}>{o.cliente}{o.numCotizacion ? ` · ${o.numCotizacion}` : ""}</div>)}</div> : null}
+              </div>
+            ) : null}
+
+            {res.nuevas.length > 0 ? (
+              <button onClick={() => onImportar(sel)} disabled={sel.length === 0} className="w-full py-3 rounded-xl font-semibold" style={{ background: sel.length ? C.ambar : C.borde, color: "#fff" }}>
+                Importar {sel.length} {sel.length === 1 ? "oportunidad" : "oportunidades"}
+              </button>
+            ) : null}
+          </>) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SeguimientoSheet({ opps, onCerrar }) {
   const [excl, setExcl] = useState({});
   const [abierto, setAbierto] = useState(null);
@@ -796,6 +891,7 @@ const MANUAL = [
     "Moneda: en cada oportunidad puedes capturar el monto en pesos o en dólares con el switch MXN/USD. Si eliges USD, se convierte y se guarda en pesos usando el tipo de cambio de la pantalla de inicio; la tarjeta muestra el monto original en dólares.",
     "Comisiones: el botón Calcular comisiones toma una oportunidad ya facturada, su monto y margen, y con tu porcentaje calcula utilidad y tu pago.",
     "Pedir estatus a vendedores: el botón agrupa tus oportunidades en curso por vendedor y arma un mensaje claro y numerado (cliente, monto, etapa, referencias y un renglón Estatus para llenar). Elige cuáles incluir y envíalo por WhatsApp, Compartir o Copiar. También puedes pedir el estatus de una sola oportunidad desde su ficha.",
+    "Importar de Monday: el botón «Importar de Monday (Excel)» lee el .xlsx que descargas de tu tablero y crea oportunidades tomando cliente, título, monto (pesos o dólares), vendedor, cotización, OC, sucursal y notas. Compara con lo que ya tienes (por folio de Monday o número de cotización) y omite las repetidas; revisas la lista y marcas cuáles importar antes de confirmar.",
     "Cuando cobres, avanza la oportunidad a Facturado. Las fechas de OC, pedido y factura se sellan solas al avanzar de etapa (y puedes editarlas).",
     "El buscador encuentra por cliente, vendedor, marca, plaza y por número de cotización, OC, pedido o factura. Los chips filtran por etapa (Todas al inicio, vista por defecto). Las tarjetas se ordenan por etapa y, dentro de cada etapa, de mayor a menor monto.",
   ]},
@@ -841,6 +937,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v3.6 — Nuevo importador: sube el Excel exportado de Monday y crea las oportunidades automáticamente (cliente, título, monto en pesos o dólares, vendedor, cotización, OC, sucursal y notas). Detecta y omite las que ya tienes para no duplicarlas.",
     "v3.5 — Ahora puedes duplicar una oportunidad desde su ficha: crea una copia con los mismos datos y abre el editor para cambiar solo lo necesario. Ideal para cargar rápido oportunidades parecidas.",
     "v3.4 — Al filtrar por mes en el pipeline ahora también ves lo Cotizado en ese mes (según la fecha de cotización) y cuántas cotizaciones fueron, junto a Pedido, Facturado y Movimientos.",
     "v3.3 — El Excel del pipeline incluye una columna Monto (USD) junto a la de pesos: muestra el importe original en dólares si así se capturó, o el equivalente al tipo de cambio actual.",
@@ -983,7 +1080,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v3.5</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v3.6</div>
         </div>
       </div>
     </div>
@@ -1172,6 +1269,7 @@ export default function App() {
   const [mesSel, setMesSel] = useState("");
   const [verComision, setVerComision] = useState(false);
   const [verSeguimiento, setVerSeguimiento] = useState(false);
+  const [verImportar, setVerImportar] = useState(false);
   const [verVisitas, setVerVisitas] = useState(false);
   const [visitaEdit, setVisitaEdit] = useState(null);
   const [mesCom, setMesCom] = useState("");
@@ -1351,6 +1449,12 @@ export default function App() {
     guardar({ ...data, pipeline }); setOppEdit(null);
   };
   const delOpp = (id) => { guardar({ ...data, pipeline: data.pipeline.filter((o) => o.id !== id) }); setOppEdit(null); };
+  const importarOpps = (lista) => {
+    const t = new Date().toISOString();
+    const nuevas = lista.map((o) => ({ ...o, id: uid(), creada: t, actualizada: t }));
+    guardar({ ...data, pipeline: [...nuevas, ...data.pipeline] });
+    setVerImportar(false);
+  };
   const duplicarOpp = (o) => {
     const t = new Date().toISOString();
     const copia = { ...o, id: uid(), titulo: [o.titulo, "(copia)"].filter(Boolean).join(" ").trim(), creada: t, actualizada: t };
@@ -1816,6 +1920,9 @@ export default function App() {
             <button onClick={() => setVerSeguimiento(true)} className="w-full mt-2 py-2.5 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.azul, background: C.azulBg, color: "#2C5A8F" }}>
               <Send size={15} /> Pedir estatus a vendedores
             </button>
+            <button onClick={() => setVerImportar(true)} className="w-full mt-2 py-2.5 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.borde, background: C.panel, color: C.tinta }}>
+              <FileUp size={15} /> Importar de Monday (Excel)
+            </button>
 
             <div className="space-y-2 mt-2">
               {oppsFiltradas.length === 0 && <Vacio>Sin oportunidades aquí. Cada acuerdo de visita o cotización enviada merece una tarjeta.</Vacio>}
@@ -2037,7 +2144,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <div className="text-xs text-center mt-4" style={{ ...mono, color: C.dim }}>Centro de Control v3.5 · PWA · nube</div>
+            <div className="text-xs text-center mt-4" style={{ ...mono, color: C.dim }}>Centro de Control v3.6 · PWA · nube</div>
           </div>
         )}
 
@@ -2248,6 +2355,7 @@ export default function App() {
       })()}
 
       {verSeguimiento && <SeguimientoSheet opps={data.pipeline} onCerrar={() => setVerSeguimiento(false)} />}
+      {verImportar && <ImportarSheet pipeline={data.pipeline} tc={data.tipoCambio || 0} onImportar={importarOpps} onCerrar={() => setVerImportar(false)} />}
       {verCuenta && <CuentaSheet sesion={sesion} sync={sync} onSalir={cerrarSesion} onCerrar={() => setVerCuenta(false)} />}
       {verVisitas && <VisitasSheet visitas={data.visitas || []} opps={data.pipeline} onNueva={() => setVisitaEdit({})} onEditar={(v) => setVisitaEdit(v)} onCheckin={checkinVisita} onCerrar={() => setVerVisitas(false)} />}
       {visitaEdit !== null && <VisitaEditor visita={visitaEdit} opps={data.pipeline} onGuardar={guardarVisita} onEliminar={() => delVisita(visitaEdit.id)} onCheckin={obtenerUbicacion} onCerrar={() => setVisitaEdit(null)} />}
