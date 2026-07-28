@@ -1,7 +1,12 @@
 {
-  "name": "Brida", "short_name": "Brida", "id": "/brida/",
-  "start_url": "./", "scope": "./", "display": "standalone",
-  "background_color": "#141C26", "theme_color": "#141C26", "lang": "es",
+  "name": "Centro de Control Comercial",
+  "short_name": "Control",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#17161B",
+  "theme_color": "#17161B",
+  "lang": "es",
   "icons": [
     { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
