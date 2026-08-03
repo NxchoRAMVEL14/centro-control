@@ -5,7 +5,7 @@ import {
   Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, FileUp, FileSpreadsheet
 } from "lucide-react";
 import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos } from "./nube.jsx";
-import { leerXLSX, mapearMonday } from "./importar.jsx";
+import { leerXLSX, mapearMonday, mapearPipeline } from "./importar.jsx";
 const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
 import { ILUSTRACIONES } from "./ilustraciones.jsx";
 import { exportarXLSX } from "./xlsx.jsx";
@@ -554,7 +554,7 @@ function VisitasSheet({ visitas, opps, onNueva, onEditar, onCheckin, onCerrar })
   );
 }
 
-function ImportarSheet({ pipeline, tc, onImportar, onCerrar }) {
+function ImportarSheet({ titulo, descripcion, parsear, onImportar, onCerrar }) {
   const [res, setRes] = useState(null);
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
@@ -568,7 +568,7 @@ function ImportarSheet({ pipeline, tc, onImportar, onCerrar }) {
     try {
       const buf = await f.arrayBuffer();
       const hojas = leerXLSX(buf);
-      const r = mapearMonday(hojas, pipeline, tc);
+      const r = parsear(hojas);
       if (r.error) { setError(r.error); setCargando(false); return; }
       setRes(r); setExcl({}); setCargando(false);
     } catch (e) { setError("No pude leer el archivo. Asegúrate de que sea un .xlsx exportado de Monday."); setCargando(false); }
@@ -578,11 +578,11 @@ function ImportarSheet({ pipeline, tc, onImportar, onCerrar }) {
     <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,20,25,0.55)" }} onClick={onCerrar}>
       <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
-          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><FileUp size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Importar oportunidades</span></span>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><FileUp size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>{titulo}</span></span>
           <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
         </div>
         <div className="p-4 pb-8 space-y-3">
-          <div className="text-xs" style={{ color: C.dim }}>Sube el Excel (.xlsx) que descargaste de tu tablero de Monday. Tomo cliente, título, monto (pesos o dólares), vendedor, cotización, OC, sucursal y notas. Las que ya tienes en tu pipeline (mismo folio de Monday o de cotización) se omiten automáticamente.</div>
+          <div className="text-xs" style={{ color: C.dim }}>{descripcion}</div>
 
           <label className="w-full rounded-xl border border-dashed px-3 py-5 flex flex-col items-center justify-center gap-2 text-sm font-semibold" style={{ borderColor: C.ambar, color: C.tinta, background: C.panel, cursor: "pointer" }}>
             <FileSpreadsheet size={22} style={{ color: C.ambar }} />
@@ -892,6 +892,7 @@ const MANUAL = [
     "Comisiones: el botón Calcular comisiones toma una oportunidad ya facturada, su monto y margen, y con tu porcentaje calcula utilidad y tu pago.",
     "Pedir estatus a vendedores: el botón agrupa tus oportunidades en curso por vendedor y arma un mensaje claro y numerado (cliente, monto, etapa, referencias y un renglón Estatus para llenar). Elige cuáles incluir y envíalo por WhatsApp, Compartir o Copiar. También puedes pedir el estatus de una sola oportunidad desde su ficha.",
     "Importar de Monday: el botón «Importar de Monday (Excel)» lee el .xlsx que descargas de tu tablero y crea oportunidades tomando cliente, título, monto (pesos o dólares), vendedor, cotización, OC, sucursal y notas. Compara con lo que ya tienes (por folio de Monday o número de cotización) y omite las repetidas; revisas la lista y marcas cuáles importar antes de confirmar.",
+    "Importar pipeline (Excel): en Cierre, el botón «Importar pipeline (Excel)» hace lo inverso a exportar: lee el .xlsx que esta app genera en «Pipeline en Excel» y reconstruye las oportunidades con todos sus datos (etapa, montos, folios y fechas, comisión, vendedor, marca, plaza y notas). Sirve para restaurar o mover tu pipeline; las que ya tienes no se duplican.",
     "Cuando cobres, avanza la oportunidad a Facturado. Las fechas de OC, pedido y factura se sellan solas al avanzar de etapa (y puedes editarlas).",
     "El buscador encuentra por cliente, vendedor, marca, plaza y por número de cotización, OC, pedido o factura. Los chips filtran por etapa (Todas al inicio, vista por defecto). Las tarjetas se ordenan por etapa y, dentro de cada etapa, de mayor a menor monto.",
   ]},
@@ -937,6 +938,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v3.7 — En Cierre ahora puedes importar el propio Excel del pipeline (lo inverso a exportarlo): reconstruye las oportunidades con todos sus datos, ideal para restaurar o mover tu pipeline. No duplica lo que ya tienes.",
     "v3.6 — Nuevo importador: sube el Excel exportado de Monday y crea las oportunidades automáticamente (cliente, título, monto en pesos o dólares, vendedor, cotización, OC, sucursal y notas). Detecta y omite las que ya tienes para no duplicarlas.",
     "v3.5 — Ahora puedes duplicar una oportunidad desde su ficha: crea una copia con los mismos datos y abre el editor para cambiar solo lo necesario. Ideal para cargar rápido oportunidades parecidas.",
     "v3.4 — Al filtrar por mes en el pipeline ahora también ves lo Cotizado en ese mes (según la fecha de cotización) y cuántas cotizaciones fueron, junto a Pedido, Facturado y Movimientos.",
@@ -1080,7 +1082,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v3.6</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v3.7</div>
         </div>
       </div>
     </div>
@@ -1270,6 +1272,7 @@ export default function App() {
   const [verComision, setVerComision] = useState(false);
   const [verSeguimiento, setVerSeguimiento] = useState(false);
   const [verImportar, setVerImportar] = useState(false);
+  const [verImportarPipe, setVerImportarPipe] = useState(false);
   const [verVisitas, setVerVisitas] = useState(false);
   const [visitaEdit, setVisitaEdit] = useState(null);
   const [mesCom, setMesCom] = useState("");
@@ -2086,6 +2089,14 @@ export default function App() {
               <CalendarDays size={13} className="shrink-0 mt-0.5" /> Exporta cada viernes: te sirve de respaldo y deja Monday al día en una sola importación.
             </div>
 
+            <Sec>Importar</Sec>
+            <button onClick={() => setVerImportarPipe(true)} className="w-full rounded-xl border px-3 py-3 flex items-center gap-3 text-left" style={{ borderColor: C.borde, background: C.panel }}>
+              <FileUp size={18} style={{ color: C.ambar }} className="shrink-0" />
+              <span className="flex-1"><span className="text-sm font-semibold block">Importar pipeline (Excel)</span><span className="text-xs" style={{ color: C.dim }}>Reconstruye oportunidades desde el Excel que exportas aquí</span></span>
+              <ChevronRight size={16} style={{ color: C.dim }} />
+            </button>
+            <div className="text-xs mt-2" style={{ color: C.dim }}>Útil para restaurar tu pipeline o pasarlo a otro dispositivo. Las oportunidades que ya tienes no se duplican.</div>
+
             <Sec>Enviar a Google Tasks / Keep</Sec>
             <div className="rounded-xl border p-2.5" style={{ borderColor: C.borde, background: C.panel }}>
               <div className="flex gap-1.5">
@@ -2144,7 +2155,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <div className="text-xs text-center mt-4" style={{ ...mono, color: C.dim }}>Centro de Control v3.6 · PWA · nube</div>
+            <div className="text-xs text-center mt-4" style={{ ...mono, color: C.dim }}>Centro de Control v3.7 · PWA · nube</div>
           </div>
         )}
 
@@ -2355,7 +2366,8 @@ export default function App() {
       })()}
 
       {verSeguimiento && <SeguimientoSheet opps={data.pipeline} onCerrar={() => setVerSeguimiento(false)} />}
-      {verImportar && <ImportarSheet pipeline={data.pipeline} tc={data.tipoCambio || 0} onImportar={importarOpps} onCerrar={() => setVerImportar(false)} />}
+      {verImportar && <ImportarSheet titulo="Importar de Monday" descripcion="Sube el Excel (.xlsx) que descargaste de tu tablero de Monday. Tomo cliente, título, monto (pesos o dólares), vendedor, cotización, OC, sucursal y notas. Las que ya tienes en tu pipeline (mismo folio de Monday o de cotización) se omiten automáticamente." parsear={(hojas) => mapearMonday(hojas, data.pipeline, data.tipoCambio || 0)} onImportar={importarOpps} onCerrar={() => setVerImportar(false)} />}
+      {verImportarPipe && <ImportarSheet titulo="Importar pipeline (Excel)" descripcion="Sube el Excel que esta app genera en «Pipeline en Excel». Reconstruyo las oportunidades con sus datos: etapa, montos, folios y fechas de cotización, OC, pedido y factura, comisión, vendedor, marca, plaza y notas. Las que ya están en tu pipeline (por cotización o por cliente y título) se omiten." parsear={(hojas) => mapearPipeline(hojas, data.pipeline, data.tipoCambio || 0, ETAPAS)} onImportar={importarOpps} onCerrar={() => setVerImportarPipe(false)} />}
       {verCuenta && <CuentaSheet sesion={sesion} sync={sync} onSalir={cerrarSesion} onCerrar={() => setVerCuenta(false)} />}
       {verVisitas && <VisitasSheet visitas={data.visitas || []} opps={data.pipeline} onNueva={() => setVisitaEdit({})} onEditar={(v) => setVisitaEdit(v)} onCheckin={checkinVisita} onCerrar={() => setVerVisitas(false)} />}
       {visitaEdit !== null && <VisitaEditor visita={visitaEdit} opps={data.pipeline} onGuardar={guardarVisita} onEliminar={() => delVisita(visitaEdit.id)} onCheckin={obtenerUbicacion} onCerrar={() => setVisitaEdit(null)} />}

@@ -107,3 +107,76 @@ export function mapearMonday(hojas, pipeline, tc) {
   }
   return { nuevas, duplicadas };
 }
+
+// ── Importar el PROPIO Excel que exporta la app (Cierre → Pipeline en Excel) ──
+const norm = (s) => String(s || "").trim().toLowerCase();
+
+export function mapearPipeline(hojas, pipeline, tc, etapas) {
+  let filas = null, hi = -1;
+  for (const h of hojas) {
+    const i = h.findIndex((r) => r && r.some((c) => norm(c) === "oportunidad") && r.some((c) => norm(c) === "monto (mxn)"));
+    if (i >= 0) { filas = h; hi = i; break; }
+  }
+  if (!filas) return { error: "No reconocí el formato. Sube el Excel que exporta esta app en Cierre → Pipeline en Excel." };
+
+  const headers = filas[hi].map((c) => String(c || "").trim());
+  const col = (...names) => {
+    for (const n of names) { const i = headers.findIndex((h) => h.toLowerCase() === n.toLowerCase()); if (i >= 0) return i; }
+    for (const n of names) { const i = headers.findIndex((h) => h.toLowerCase().includes(n.toLowerCase())); if (i >= 0) return i; }
+    return -1;
+  };
+  const idx = {
+    opp: col("Oportunidad"), etapa: col("Etapa"), cliente: col("Cliente"), cot: col("Cotización", "Cotizacion"),
+    fcot: col("Fecha cotización", "Fecha cotizacion"), mxn: col("Monto (MXN)"), usd: col("Monto (USD)"),
+    margen: col("Margen"), oc: col("OC cliente"), foc: col("Fecha OC"), pedido: col("Pedido"), fped: col("Fecha pedido"),
+    factura: col("Factura"), ffac: col("Fecha factura"), compct: col("Comisión (%)", "Comision (%)"),
+    pagada: col("Pagada"), vendedor: col("Vendedor"), marca: col("Marca"), plaza: col("Plaza"),
+    prox: col("Próxima acción", "Proxima accion"), fprox: col("Fecha acción", "Fecha accion"), notas: col("Notas"),
+  };
+  const labelToId = {}; (etapas || []).forEach((e) => { labelToId[norm(e.label)] = e.id; });
+  const num = (v) => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : n; };
+  const get = (row, i) => (i >= 0 && row[i] != null ? String(row[i]).trim() : "");
+  const fch = (row, i) => get(row, i).slice(0, 10);
+
+  const existeCot = new Set(pipeline.map((o) => (o.numCotizacion || "").trim().toLowerCase()).filter(Boolean));
+  const existeCT = new Set(pipeline.map((o) => norm(o.cliente) + "|" + norm(o.titulo)).filter((k) => k !== "|"));
+  const nuevas = [], duplicadas = [], vistos = new Set();
+
+  for (let r = hi + 1; r < filas.length; r++) {
+    const row = filas[r]; if (!row) continue;
+    const cliente = get(row, idx.cliente);
+    const opp = get(row, idx.opp);
+    if (!cliente && !opp) continue;
+    let titulo = "";
+    if (opp && cliente && opp.startsWith(cliente + " — ")) titulo = opp.slice(cliente.length + 3).trim();
+    const mxn = num(get(row, idx.mxn)), usd = num(get(row, idx.usd));
+    const esUSD = mxn <= 0 && usd > 0;
+    const margen = get(row, idx.margen), compct = get(row, idx.compct);
+    const cand = {
+      cliente: cliente || opp, titulo,
+      etapa: labelToId[norm(get(row, idx.etapa))] || "cotizado",
+      monto: mxn > 0 ? Math.round(mxn) : (esUSD ? Math.round(usd * (tc || 0)) : null),
+      moneda: esUSD ? "USD" : "MXN",
+      montoOrig: esUSD ? usd : null,
+      tcCaptura: esUSD ? (tc || null) : null,
+      margen: margen ? num(margen) : null,
+      marca: get(row, idx.marca), plaza: get(row, idx.plaza),
+      vendedor: get(row, idx.vendedor),
+      numCotizacion: get(row, idx.cot), fechaCotizacion: fch(row, idx.fcot),
+      ocCliente: get(row, idx.oc), fechaOC: fch(row, idx.foc),
+      numPedido: get(row, idx.pedido), fechaPedido: fch(row, idx.fped),
+      numFactura: get(row, idx.factura), fechaFactura: fch(row, idx.ffac),
+      comisionPct: compct ? num(compct) : "",
+      comisionPagada: /^s[ií]/i.test(get(row, idx.pagada)),
+      proximaAccion: get(row, idx.prox), fechaAccion: fch(row, idx.fprox),
+      notas: get(row, idx.notas),
+    };
+    const cotKey = (cand.numCotizacion || "").toLowerCase();
+    const ctKey = norm(cand.cliente) + "|" + norm(cand.titulo);
+    const clave = cotKey || ctKey;
+    const dup = (cotKey && existeCot.has(cotKey)) || (!cotKey && existeCT.has(ctKey)) || (clave && vistos.has(clave));
+    if (clave) vistos.add(clave);
+    (dup ? duplicadas : nuevas).push(cand);
+  }
+  return { nuevas, duplicadas };
+}
