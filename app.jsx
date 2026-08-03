@@ -2,13 +2,13 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
   ListTodo, Timer, Briefcase, Target, FileDown, Plus, Play, Square,
   Circle, CheckCircle2, ChevronDown, ChevronRight, AlertTriangle, X,
-  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, FileUp, FileSpreadsheet
+  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, Building2, Users, FileText, Package, BarChart3, FileUp, FileSpreadsheet
 } from "lucide-react";
-import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos } from "./nube.jsx";
-import { leerXLSX, mapearMonday, mapearPipeline } from "./importar.jsx";
+import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos, miPerfil, cargarEquipo } from "./nube.jsx";
 const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
 import { ILUSTRACIONES } from "./ilustraciones.jsx";
-import { exportarXLSX } from "./xlsx.jsx";
+import { exportarXLSX, exportarCotizacionXLSX } from "./xlsx.jsx";
+import { leerXLSX, mapearMonday, mapearCaratula, mapearListaPrecios } from "./importar.jsx";
 
 /* ── Paleta: HMI industrial de alto desempeño ─────────────────────── */
 const C = {
@@ -30,7 +30,7 @@ const mono = { fontFamily: "'IBM Plex Mono',ui-monospace,monospace" };
 const inp = { background: "#FFFFFF", border: `1px solid ${C.borde}`, color: C.tinta, colorScheme: "light" };
 
 const ETAPAS = [
-  { id: "visita", label: "Acuerdo de visita", color: C.morado },
+  { id: "visita", label: "Oportunidad entrante", color: C.morado },
   { id: "cotizado", label: "Cotizado", color: C.azul },
   { id: "porcerrar", label: "Por cerrar", color: C.ambar },
   { id: "oc", label: "OC recibida", color: C.verde },
@@ -84,7 +84,7 @@ const descargar = (nombre, contenido, tipo = "text/csv;charset=utf-8;") => {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 };
 
-const VACIO = { tareas: [], tiempo: [], pipeline: [], metas: { corto: [], mediano: [], largo: [] }, mejoras: [], visitas: [], timer: null, tipoCambio: 17, tipoCambioFecha: "" };
+const VACIO = { tareas: [], tiempo: [], pipeline: [], metas: { corto: [], mediano: [], largo: [] }, mejoras: [], visitas: [], clientes: [], contactos: [], actividades: [], productos: [], cotizaciones: [], descuentos: [], timer: null, tipoCambio: 17, tipoCambioFecha: "" };
 const RESULTADOS = [
   { id: "pendiente", label: "Pendiente", color: "#5E6E7E" },
   { id: "interes", label: "Interés", color: "#3D74B8" },
@@ -94,6 +94,240 @@ const RESULTADOS = [
   { id: "reagendar", label: "Reagendar", color: "#7C5FB8" },
 ];
 const resultadoDe = (id) => RESULTADOS.find((r) => r.id === id) || RESULTADOS[0];
+const TIPOS_CLIENTE = [
+  { id: "comerciante", label: "Comerciante / Reventa" },
+  { id: "contratista_electrico", label: "Contratista eléctrico" },
+  { id: "publico", label: "Público general" },
+  { id: "industria", label: "Industria" },
+  { id: "constructor", label: "Constructor civil" },
+  { id: "contratista_industrial", label: "Contratista industrial" },
+  { id: "servicios", label: "Empresa de servicios" },
+  { id: "electricista", label: "Electricista" },
+  { id: "integrador", label: "Integradores" },
+  { id: "oem", label: "OEM (Fabricante de Equipo Original)" },
+  { id: "arquitecto", label: "Arquitectos" },
+  { id: "ferretero", label: "Ferretero" },
+  { id: "redes", label: "Redes y comunicación" },
+  { id: "gobierno", label: "Gobierno" },
+];
+const ESTADOS_CLIENTE = [
+  { id: "prospecto", label: "Prospecto", color: "#3D74B8" },
+  { id: "activo", label: "Activo", color: "#2F9467" },
+  { id: "dormido", label: "Dormido", color: "#5E6E7E" },
+];
+const ROLES_DECISION = [
+  { id: "decide", label: "Decide" },
+  { id: "influye", label: "Influye" },
+  { id: "usa", label: "Usa" },
+  { id: "paga", label: "Paga" },
+];
+const TIPOS_ACTIVIDAD = [
+  { id: "llamada", label: "Llamada" },
+  { id: "correo", label: "Correo" },
+  { id: "reunion", label: "Reunión" },
+  { id: "visita", label: "Visita" },
+  { id: "nota", label: "Nota" },
+];
+const ESTADOS_COTIZACION = [
+  { id: "borrador", label: "Borrador", color: "#5E6E7E" },
+  { id: "enviada", label: "Enviada", color: "#3D74B8" },
+  { id: "aceptada", label: "Aceptada", color: "#2F9467" },
+  { id: "rechazada", label: "Rechazada", color: "#C94848" },
+];
+const PROB_ETAPA = { visita: 0.10, cotizado: 0.30, porcerrar: 0.60, oc: 0.90, pedido: 0.95, facturado: 1, perdido: 0 };
+const diasEntre = (a, b) => {
+  if (!a || !b) return null;
+  return Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
+};
+const tiemposOpp = (o) => {
+  const inicio = o.fechaVisita || (o.creada ? o.creada.slice(0, 10) : null);
+  const resp = (inicio && o.fechaCotizacion) ? diasEntre(inicio, o.fechaCotizacion) : null;
+  const cerrada = ["facturado", "perdido"].includes(o.etapa);
+  const fin = cerrada ? (o.fechaFactura || (o.actualizada ? o.actualizada.slice(0, 10) : hoy())) : hoy();
+  const total = inicio ? diasEntre(inicio, fin) : null;
+  return { resp, total, cerrada, inicio };
+};
+const horasSinCambio = (o) => {
+  const ts = o.actualizada || o.creada;
+  return ts ? (Date.now() - new Date(ts).getTime()) / 3600000 : 0;
+};
+const staleVisita = (o) => o.etapa === "visita" && horasSinCambio(o) >= 24;
+const fraseDias = (n) => n == null ? "—" : n === 0 ? "mismo día" : n === 1 ? "1 día" : `${n} días`;
+const CLASE_CLIENTE = {
+  clave: { label: "Cuenta clave", bg: "#FBF1D9", color: "#8A5A00", punto: "#C9A227", fondo: "#FCF6E1", borde: "#E7CE85" },
+  recurrente: { label: "Recurrente", bg: "#E4F3EC", color: "#2F7A55", punto: "#2F9467", fondo: "#EDF7F1", borde: "#B9E0CB" },
+  riesgo: { label: "Pide y no cierra", bg: "#1A1A1A", color: "#F0F0F0", punto: "#1A1A1A", fondo: "#E8E8EA", borde: "#B9B9BE" },
+};
+const clasificarCliente = (nombre, pipeline, clientes) => {
+  const norm = (s) => (s || "").trim().toLowerCase();
+  const n = norm(nombre);
+  if (!n) return { tipo: "normal", ganadas: 0, perdidas: 0, activas: 0, total: 0, clave: false, alliance: false };
+  const cli = (clientes || []).find((c) => norm(c.nombre) === n);
+  const opps = (pipeline || []).filter((o) => norm(o.cliente) === n);
+  const ganadas = opps.filter((o) => o.etapa === "facturado").length;
+  const perdidas = opps.filter((o) => o.etapa === "perdido").length;
+  const activas = opps.filter((o) => !["facturado", "perdido"].includes(o.etapa)).length;
+  const total = opps.length;
+  const clave = !!(cli && cli.clave), alliance = !!(cli && cli.alliance);
+  let tipo = "normal";
+  if (clave || alliance || ganadas >= 3) tipo = "clave";
+  else if (total >= 4 && ganadas === 0 && perdidas >= 2) tipo = "riesgo";
+  else if (ganadas >= 1) tipo = "recurrente";
+  return { tipo, ganadas, perdidas, activas, total, clave, alliance };
+};
+const factorDe = (codigo, descuentos) => {
+  const c = (codigo || "").trim().toLowerCase();
+  if (!c) return null;
+  const d = (descuentos || []).find((x) => (x.codigo || "").trim().toLowerCase() === c);
+  return d && d.factor != null && d.factor !== "" ? Number(d.factor) : null;
+};
+const costoNeto = (prod, descuentos) => {
+  const lista = Number(prod.precioLista);
+  const f = factorDe(prod.codigoDescuento, descuentos);
+  if (!isNaN(lista) && prod.precioLista !== "" && prod.precioLista != null && f != null) return Math.round(lista * f * 100) / 100;
+  return null;
+};
+function totalesCot(cot) {
+  const sub = (cot.partidas || []).reduce((s, p) => s + (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100), 0);
+  const iva = cot.iva !== false ? sub * 0.16 : 0;
+  return { sub, iva, total: sub + iva };
+}
+const LOGO_ELEKTRON = "data:image/png;base64,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";
+const FIRMA_ELEKTRON = "data:image/png;base64,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";
+function escHtml(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function numeroALetras(num) {
+  const n = Math.floor(Math.abs(num || 0));
+  const cents = Math.round((Math.abs(num || 0) - n) * 100);
+  const uni = ["", "UN", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE", "DIEZ", "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISÉIS", "DIECISIETE", "DIECIOCHO", "DIECINUEVE", "VEINTE"];
+  const dec = ["", "", "", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA"];
+  const cen = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS", "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"];
+  const centenas = (x) => {
+    if (x === 0) return "";
+    if (x === 100) return "CIEN";
+    let s = "";
+    const c = Math.floor(x / 100), dd = x % 100, d = Math.floor(dd / 10), u = x % 10;
+    if (c) s += cen[c] + " ";
+    if (dd <= 20) s += uni[dd];
+    else if (dd < 30) s += "VEINTI" + uni[u];
+    else { s += dec[d]; if (u) s += " Y " + uni[u]; }
+    return s.trim();
+  };
+  const grupos = (x) => {
+    if (x === 0) return "CERO";
+    const millon = Math.floor(x / 1000000), mil = Math.floor((x % 1000000) / 1000), resto = x % 1000;
+    let s = "";
+    if (millon) s += (millon === 1 ? "UN MILLÓN" : centenas(millon) + " MILLONES") + " ";
+    if (mil) s += (mil === 1 ? "MIL" : centenas(mil) + " MIL") + " ";
+    if (resto) s += centenas(resto);
+    return s.trim();
+  };
+  return `${grupos(n) || "CERO"} PESOS, ${String(cents).padStart(2, "0")}/100`;
+}
+function pdfCotizacion(cot) {
+  const parts = cot.partidas || [];
+  const sub = parts.reduce((s, p) => s + (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100), 0);
+  const mon = cot.moneda === "USD" ? "USD" : "MXN";
+  const dsBtn = (url) => url ? `<a href="${escHtml(url)}" target="_blank" style="display:inline-block;background:#C00C0F;color:#fff;font-weight:800;font-size:11px;padding:3px 10px;border-radius:3px;text-decoration:none">DS</a>` : "";
+  const filas = parts.map((p, i) => {
+    const imp = (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100);
+    const t = p.tiempo ? `Partida ${i + 1} - Tiempo estimado: ${escHtml(p.tiempo)}` : `Partida ${i + 1}`;
+    return `<tr>
+      <td class="c">${i + 1}</td>
+      <td class="c">${Number(p.cantidad) || 0}</td>
+      <td class="desc">${escHtml(p.descripcion)}<div class="sub">${t}</div><div class="pm">PRECIO EN ${mon}</div></td>
+      <td class="r">${fMXN(Number(p.precio) || 0)}</td>
+      <td class="r">${fMXN(imp)}</td>
+      <td class="c">${dsBtn(p.datasheet)}</td>
+    </tr>`;
+  }).join("");
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cotización ${escHtml(cot.folio || "")}</title>
+<style>
+*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:0;padding:26px 30px;font-size:11px}
+.logo{height:52px}
+.tit{text-align:center;font-weight:700;font-size:13px;margin:8px 0}
+.campos{width:100%;font-size:11px}.campos td{padding:2px 4px;vertical-align:top}
+.lbl{font-weight:700;width:90px}.folio{text-align:right;font-weight:700;font-size:12px}
+.fecha{text-align:right;color:#000}
+.intro{margin:10px 0 4px}.introb{font-weight:700}
+table.items{width:100%;border-collapse:collapse;margin-top:6px}
+table.items th{border:1px solid #000;background:#fff;font-size:10px;padding:3px;text-align:center;font-weight:700}
+table.items td{border:1px solid #000;padding:4px 5px;font-size:10px;vertical-align:top}
+td.c{text-align:center}td.r{text-align:right}td.desc .sub{margin-top:2px}td.desc .pm{margin-top:6px;font-size:9px}
+tr.total td{font-weight:700;font-size:11px;padding:6px 5px}
+h3{font-size:11px;margin:14px 0 3px;font-weight:700}
+.cond{font-size:10px;line-height:1.45;white-space:pre-wrap}.u{text-decoration:underline;font-weight:700}
+.firmabox{border:1px solid #000;margin-top:16px;padding:8px;text-align:center}
+.firmabox b{font-size:11px}.firma{height:46px;margin:2px 0}.linea{border-top:1px solid #000;width:220px;margin:0 auto}
+.pie{text-align:center;font-size:9px;color:#000;margin-top:18px;line-height:1.5}
+.fo{border:1px solid #000;display:inline-block;font-size:8px;padding:2px 8px;float:right}
+@media print{body{padding:14mm 12mm}@page{margin:0}}
+</style></head><body>
+<div><img src="${LOGO_ELEKTRON}" class="logo" alt="Elektron"/></div>
+<div class="tit">Cotización Técnica -Económica</div>
+<table class="campos"><tbody>
+  <tr><td class="lbl">Razón Social:</td><td><b>${escHtml(cot.cliente || "")}</b></td><td class="folio">${escHtml(cot.folio || "")}</td></tr>
+  <tr><td class="lbl">Representante:</td><td>${escHtml(cot.representante || "")}</td><td class="fecha">Fecha de elaboración:</td></tr>
+  <tr><td class="lbl">Domicilio:</td><td>${escHtml(cot.domicilio || "")}</td><td class="fecha">${escHtml(cot.fecha || "")}</td></tr>
+  <tr><td class="lbl">Cotizador:</td><td>${escHtml(cot.cotizador || "")}</td><td></td></tr>
+</tbody></table>
+<div class="intro"><b>Estimados Clientes y Amigos:</b><br>Sometemos a sus finas atenciones nuestra oferta en precio y tiempo de entrega del siguiente material y equipo:</div>
+<table class="items">
+  <thead><tr><th style="width:32px">Part.</th><th style="width:36px">Cant.</th><th>Descripción</th><th style="width:80px">P.U.</th><th style="width:80px">TOTAL</th><th style="width:54px">DataSheet</th></tr></thead>
+  <tbody>
+    ${filas || '<tr><td colspan="6" class="c" style="padding:14px;color:#777">Sin partidas</td></tr>'}
+    <tr class="total"><td colspan="3">${numeroALetras(sub)} ${mon} + IVA</td><td class="r">TOTAL</td><td class="r">${fMXN(sub)}</td><td></td></tr>
+  </tbody>
+</table>
+<h3>Condiciones Generales:</h3>
+<div class="cond">El cliente deberá pagar el 50 % de anticipo (referirse a política de anticipos).
+El saldo deberá liquidarse contra aviso de disponibilidad, si no cuenta con línea de crédito.</div>
+<h3>Notas de Escalación:</h3>
+<div class="cond"><span class="u">Esta cotización no incluye el 16 % de IVA</span>, el cual se cargará al momento de la facturación de los eventos de anticipo y finiquito.
+Los precios presentados están sujetos a cambio sin previo aviso, debido a que están basados en la paridad peso/dólar y serán ajustados al tipo de cambio vigente.
+
+Esta cotización no incluye servicio de configuración y puesta en marcha a menos que se indique, en caso de requerir este servicio solicitar su cotización por separado.
+
+DESVIACIONES Y/O ACLARACIONES
+El equipo cotizado es de acuerdo a nuestra mejor interpretación, basada en la información recibida, por lo que será obligación del cliente el revisar y aprobar dicha cotización, en el entendido que si existiera alguna omisión o diferencia de acuerdo a sus necesidades se requerirá de una nueva cotización.
+Los tiempos de entrega del equipo indicados en esta cotización serán a partir de recibir el anticipo correspondiente.
+
+CANCELACIONES
+Elektron del Bajío no acepta la cancelación de pedidos de equipos y/o servicios de Ingeniería y proyectos, ya que su diseño y fabricación se basa en especificaciones que satisfacen las necesidades particulares de un cliente. En caso de que esto ocurriera, el cargo se determinará por los gastos realizados e insumos comprados específicamente para ese pedido y dependiendo de la etapa en que se encuentre con base en los siguientes porcentajes:
+• 10% Cuando se haya recibido el pedido del Cliente
+• 35% Cuando se encuentre en la etapa de ingeniería
+• 50 al 75% Cuando se encuentre en la etapa de compra de materiales y/o ensamble
+• 100% Cuando esté terminada la orden
+
+N O T A S:
+1. Tiempo de entrega:
+A) Cuando no se requiere planos para aprobación. El tiempo de entrega para el equipo cotizado, será contado a partir de la fecha de recibir su orden con toda la información de especificaciones técnicas del equipo, así como su anticipo correspondiente.
+B) Cuando se requieran planos para aprobación. El tiempo de entrega será contado a partir de la fecha de recibir los planos 100% aprobados, previo envío de su orden, con toda la información necesaria y su anticipo correspondiente.
+Los tiempos de entrega indicados corresponden a la mejor estimación que podemos dar en el momento de emitir esta cotización.
+Se debe considerar de 3 a 5 días hábiles adicionales para entrega en Sitio.
+Se consideran los días hábiles presentados de lunes a viernes siempre y cuando no sean feriados.
+C) Los tiempos de entrega descritos en esta cotización son salvo previa venta y pueden variar sin previo aviso.
+2. Es necesario que revisen nuestra oferta ya que se realiza de acuerdo con nuestra interpretación, en caso de existir algún cambio o comentario, favor de comunicarlo a nuestro Vendedor.
+3. Nos reservamos el derecho de corregir cualquier error de índole técnico comercial que pudiera presentarse en esta cotización.
+4. Si nos vemos favorecidos con su amable pedido, favor de indicar el número completo de esta cotización y colocarlo a nombre de Elektron del Bajío, S.A. de C.V., en el entendido de que el equipo cotizado cumple con sus requerimientos.
+5. Se anexan condiciones generales de venta.
+6. Elektron del Bajío, S.A. de C.V. no acepta multas o penalizaciones de ninguna especie.
+7. La validez de este formato aplica solo para diseños de Ingeniería y Proyectos.
+
+Sin más por el momento quedamos al pendiente de sus comentarios</div>
+<div class="firmabox">
+  <b>ATENTAMENTE</b><br><b>ELEKTRON DEL BAJIO SA DE CV</b>
+  <div><img src="${FIRMA_ELEKTRON}" class="firma" alt="firma"/></div>
+  <div class="linea"></div>
+  Reviso y Verifico<br>Cotizador de ingeniería y proyectos, automatización y control<br><b>Ing. Saúl Velázquez</b>
+</div>
+<div class="pie">Elektron del Bajío, S.A. de C.V<br>Blvd. Adolfo López Mateos No. 1115 Ote. Col. Coecillo. León, Gto.<br>Tel. 477 7 19 78 00<br>www.elektron.com.mx<span class="fo">FO-IPE-01 Versión 02</span></div>
+</body></html>`;
+  const w = window.open("", "_blank");
+  if (!w) { alert("Permite las ventanas emergentes (pop-ups) para generar el PDF."); return; }
+  w.document.write(html); w.document.close(); w.focus();
+  setTimeout(() => { try { w.print(); } catch (e) {} }, 600);
+}
+
 
 /* ── Google Calendar (URL pre-llenada) ────────────────────────────── */
 const masMinutos = (hhmm, mins) => {
@@ -112,7 +346,7 @@ const abrirGCal = ({ titulo, fecha, horaInicio, fechaFin, horaFin, detalles }) =
   } else {
     dates = `${d0}/${sumaDias(fecha, 1).replace(/-/g, "")}`;
   }
-  const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(titulo || "Pendiente")}&dates=${dates}&details=${encodeURIComponent(detalles || "Creado desde Centro de Control")}`;
+  const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(titulo || "Pendiente")}&dates=${dates}&details=${encodeURIComponent(detalles || "Creado desde Brida")}`;
   window.open(url, "_blank", "noopener");
 };
 const textoTarea = (t) => `${t.titulo}${t.fecha ? ` · ${fFecha(t.fecha)}` : ""}${t.horaInicio ? ` ${t.horaInicio}` : ""}${t.horaFin ? `–${t.horaFin}` : ""}${t.cliente ? ` · ${t.cliente}` : ""}`;
@@ -238,7 +472,7 @@ const normalizarRes = (r) => {
   };
 };
 const pedirAClaude = async (texto, clave) => {
-  const sistema = `Eres el intérprete del "Centro de Control Comercial" de un ingeniero de ventas industriales en México. Hoy es ${hoy()} (AAAA-MM-DD). Convierte el dictado del usuario en JSON ESTRICTO, sin markdown ni texto extra, con exactamente esta forma: {"tareas":[{"titulo":"","cliente":"","fecha":"AAAA-MM-DD","horaInicio":"HH:MM","horaFin":"","fechaFin":"","prioridad":"alta|media|baja"}],"oportunidades":[{"cliente":"","titulo":"","etapa":"visita|cotizado|porcerrar|pedido|oc","monto":0,"proximaAccion":"","fechaAccion":""}],"metas":[{"plazo":"corto|mediano|largo","texto":""}],"tiempo":[{"categoria":"Visitas a cliente|Cotizaciones|Llamadas y seguimiento|Traslados|Administrativo|Capacitación","minutos":0,"cliente":"","fecha":"AAAA-MM-DD"}]}. Usa "" cuando un campo no aplique y listas vacías cuando no haya elementos. Interpreta fechas y horas relativas respecto a hoy. No inventes información que el usuario no dijo.`;
+  const sistema = `Eres el intérprete del "Brida" de un ingeniero de ventas industriales en México. Hoy es ${hoy()} (AAAA-MM-DD). Convierte el dictado del usuario en JSON ESTRICTO, sin markdown ni texto extra, con exactamente esta forma: {"tareas":[{"titulo":"","cliente":"","fecha":"AAAA-MM-DD","horaInicio":"HH:MM","horaFin":"","fechaFin":"","prioridad":"alta|media|baja"}],"oportunidades":[{"cliente":"","titulo":"","etapa":"visita|cotizado|porcerrar|pedido|oc","monto":0,"proximaAccion":"","fechaAccion":""}],"metas":[{"plazo":"corto|mediano|largo","texto":""}],"tiempo":[{"categoria":"Visitas a cliente|Cotizaciones|Llamadas y seguimiento|Traslados|Administrativo|Capacitación","minutos":0,"cliente":"","fecha":"AAAA-MM-DD"}]}. Usa "" cuando un campo no aplique y listas vacías cuando no haya elementos. Interpreta fechas y horas relativas respecto a hoy. No inventes información que el usuario no dijo.`;
   const rsp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": clave, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
@@ -248,6 +482,30 @@ const pedirAClaude = async (texto, clave) => {
   if (!rsp.ok) throw new Error((j.error && j.error.message) || "HTTP " + rsp.status);
   const t = (j.content || []).map((b) => b.text || "").join("");
   return JSON.parse(t.replace(/```json|```/g, "").trim());
+};
+
+const contextoCartera = (data) => {
+  const H = hoy();
+  const activas = (data.pipeline || []).filter((o) => !["facturado", "perdido"].includes(o.etapa));
+  const lineas = activas.slice(0, 45).map((o) => {
+    const et = (ETAPAS.find((e) => e.id === o.etapa) || {}).label || o.etapa;
+    return `- ${o.cliente || "s/cliente"}${o.titulo ? " / " + o.titulo : ""} | ${et} | ${o.monto ? fMXN(o.monto) : "s/monto"}${o.marca ? " | " + o.marca : ""}${o.proximaAccion ? " | próx: " + o.proximaAccion : ""}${o.fechaAccion ? " (" + o.fechaAccion + (o.fechaAccion < H ? " VENCIDA" : "") + ")" : ""}`;
+  }).join("\n");
+  const fact = (data.pipeline || []).filter((o) => o.etapa === "facturado");
+  const totAct = activas.reduce((s, o) => s + (o.monto || 0), 0);
+  const totFact = fact.reduce((s, o) => s + (o.monto || 0), 0);
+  return `Fecha de hoy: ${H}\nPipeline activo: ${fMXN(totAct)} en ${activas.length} oportunidades. Facturado histórico: ${fMXN(totFact)} en ${fact.length}.\n\nOportunidades activas:\n${lineas || "ninguna"}`;
+};
+const analizarIA = async (contexto, pregunta, clave) => {
+  const sistema = `Eres un asesor comercial experto para un ingeniero de ventas industriales en México (vende automatización y control: Schneider, Siemens, Eaton, Telemecanique). Analizas su cartera de ventas y das recomendaciones accionables, concretas y breves, en español, con viñetas cortas y priorizadas. Hoy es ${hoy()}. Enfócate en qué hacer HOY para avanzar oportunidades: prioriza por monto, etapa y acciones vencidas. No inventes datos que no estén en el contexto.`;
+  const rsp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": clave, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+    body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1024, system: sistema, messages: [{ role: "user", content: `Mi cartera:\n${contexto}\n\nPregunta: ${pregunta}` }] }),
+  });
+  const j = await rsp.json();
+  if (!rsp.ok) throw new Error((j.error && j.error.message) || "HTTP " + rsp.status);
+  return (j.content || []).map((b) => b.text || "").join("").trim();
 };
 
 /* ── Piezas de interfaz ───────────────────────────────────────────── */
@@ -554,100 +812,6 @@ function VisitasSheet({ visitas, opps, onNueva, onEditar, onCheckin, onCerrar })
   );
 }
 
-function ImportarSheet({ titulo, descripcion, parsear, onImportar, onCerrar }) {
-  const [res, setRes] = useState(null);
-  const [error, setError] = useState("");
-  const [cargando, setCargando] = useState(false);
-  const [excl, setExcl] = useState({});
-  const [nombre, setNombre] = useState("");
-  const [verDup, setVerDup] = useState(false);
-  const onArchivo = async (ev) => {
-    const f = ev.target.files && ev.target.files[0]; ev.target.value = "";
-    if (!f) return;
-    setNombre(f.name); setError(""); setRes(null); setCargando(true);
-    try {
-      const buf = await f.arrayBuffer();
-      const hojas = leerXLSX(buf);
-      const r = parsear(hojas);
-      if (r.error) { setError(r.error); setCargando(false); return; }
-      setRes(r); setExcl({}); setCargando(false);
-    } catch (e) { setError("No pude leer el archivo. Asegúrate de que sea un .xlsx exportado de Monday."); setCargando(false); }
-  };
-  const sel = res ? res.nuevas.filter((_, i) => !excl[i]) : [];
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,20,25,0.55)" }} onClick={onCerrar}>
-      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
-          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><FileUp size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>{titulo}</span></span>
-          <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
-        </div>
-        <div className="p-4 pb-8 space-y-3">
-          <div className="text-xs" style={{ color: C.dim }}>{descripcion}</div>
-
-          <label className="w-full rounded-xl border border-dashed px-3 py-5 flex flex-col items-center justify-center gap-2 text-sm font-semibold" style={{ borderColor: C.ambar, color: C.tinta, background: C.panel, cursor: "pointer" }}>
-            <FileSpreadsheet size={22} style={{ color: C.ambar }} />
-            {cargando ? "Leyendo…" : nombre ? "Elegir otro archivo" : "Elegir archivo .xlsx de Monday"}
-            <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onArchivo} className="hidden" />
-          </label>
-          {nombre && !error ? <div className="text-xs" style={{ ...mono, color: C.dim }}>{nombre}</div> : null}
-          {error ? <div className="rounded-lg border p-3 text-xs" style={{ borderColor: C.rojo, background: C.rojoBg, color: "#8B2E2E" }}>{error}</div> : null}
-
-          {res ? (<>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-xl border p-3 text-center" style={{ borderColor: C.ambar, background: "#fff" }}>
-                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.ambar, letterSpacing: "0.06em" }}>Nuevas</div>
-                <div className="text-2xl font-semibold" style={mono}>{res.nuevas.length}</div>
-              </div>
-              <div className="rounded-xl border p-3 text-center" style={{ borderColor: C.borde, background: "#fff" }}>
-                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.06em" }}>Ya existen</div>
-                <div className="text-2xl font-semibold" style={{ ...mono, color: C.dim }}>{res.duplicadas.length}</div>
-              </div>
-            </div>
-
-            {res.nuevas.length === 0 ? (
-              <Vacio>No hay oportunidades nuevas que importar; todas las del archivo ya están en tu pipeline.</Vacio>
-            ) : (
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <Sec>Se importarán · {sel.length}</Sec>
-                  <button onClick={() => setExcl(Object.fromEntries(res.nuevas.map((_, i) => [i, sel.length > 0])))} className="text-xs font-semibold" style={{ color: C.azul }}>{sel.length > 0 ? "Quitar todas" : "Marcar todas"}</button>
-                </div>
-                <div className="space-y-1.5">
-                  {res.nuevas.map((o, i) => (
-                    <label key={i} className="flex items-start gap-2 rounded-lg border p-2 cursor-pointer" style={{ borderColor: C.borde, background: C.panel }}>
-                      <input type="checkbox" checked={!excl[i]} onChange={() => setExcl((x) => ({ ...x, [i]: !x[i] }))} className="mt-0.5" style={{ accentColor: C.ambar }} />
-                      <span className="min-w-0 flex-1">
-                        <span className="text-sm font-semibold block truncate">{o.cliente}</span>
-                        {o.titulo ? <span className="text-xs block truncate" style={{ color: C.dim }}>{o.titulo}</span> : null}
-                        <span className="text-xs" style={{ ...mono, color: C.dim }}>{o.monto != null ? fMXN(o.monto) : "sin monto"}{o.moneda === "USD" && o.montoOrig ? ` · US$${o.montoOrig}` : ""}{o.vendedor ? ` · ${o.vendedor}` : ""}{o.numCotizacion ? ` · ${o.numCotizacion}` : ""}</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {res.duplicadas.length > 0 ? (
-              <div>
-                <button onClick={() => setVerDup((v) => !v)} className="text-xs font-semibold flex items-center gap-1" style={{ color: C.dim }}>
-                  <ChevronDown size={13} style={{ transform: verDup ? "rotate(180deg)" : "none" }} /> {verDup ? "Ocultar" : "Ver"} las {res.duplicadas.length} que se omiten
-                </button>
-                {verDup ? <div className="mt-1 space-y-1">{res.duplicadas.map((o, i) => <div key={i} className="text-xs px-2 py-1 rounded" style={{ background: "#fff", color: C.dim, border: `1px solid ${C.borde}` }}>{o.cliente}{o.numCotizacion ? ` · ${o.numCotizacion}` : ""}</div>)}</div> : null}
-              </div>
-            ) : null}
-
-            {res.nuevas.length > 0 ? (
-              <button onClick={() => onImportar(sel)} disabled={sel.length === 0} className="w-full py-3 rounded-xl font-semibold" style={{ background: sel.length ? C.ambar : C.borde, color: "#fff" }}>
-                Importar {sel.length} {sel.length === 1 ? "oportunidad" : "oportunidades"}
-              </button>
-            ) : null}
-          </>) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function SeguimientoSheet({ opps, onCerrar }) {
   const [excl, setExcl] = useState({});
   const [abierto, setAbierto] = useState(null);
@@ -721,17 +885,27 @@ function SeguimientoSheet({ opps, onCerrar }) {
   );
 }
 
-function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc }) {
+function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc, clientes, pipeline, equipo, miId }) {
   const nueva = !opp.id;
   const [d, setD] = useState({
-    cliente: opp.cliente || "", titulo: opp.titulo || "", etapa: opp.etapa || "visita",
+    cliente: opp.cliente || "", clienteId: opp.clienteId || "", titulo: opp.titulo || "", etapa: opp.etapa || "visita",
     monto: opp.moneda === "USD" && opp.montoOrig != null ? opp.montoOrig : (opp.monto ?? ""),
     moneda: opp.moneda || "MXN", marca: opp.marca || "", plaza: opp.plaza || "", vendedor: opp.vendedor || "",
     proximaAccion: opp.proximaAccion || "", fechaAccion: opp.fechaAccion || "", notas: opp.notas || "",
     numCotizacion: opp.numCotizacion || "", ocCliente: opp.ocCliente || "",
     numPedido: opp.numPedido || "", numFactura: opp.numFactura || "", margen: opp.margen ?? "",
-    fechaCotizacion: opp.fechaCotizacion || "", fechaOC: opp.fechaOC || "", fechaPedido: opp.fechaPedido || "", fechaFactura: opp.fechaFactura || "",
+    fechaCotizacion: opp.fechaCotizacion || "", fechaOC: opp.fechaOC || "", fechaPedido: opp.fechaPedido || "", fechaFactura: opp.fechaFactura || "", fechaVisita: opp.fechaVisita || "",
+    traidoPorId: opp.traidoPorId || (opp.creada ? "" : (miId || "")), cotizadorId: opp.cotizadorId || "", origen: opp.origen || "", costo: opp.costo ?? "", costo: opp.costo ?? "",
   });
+  const [facturas, setFacturas] = useState(() => (opp.facturas || []).map((f) => ({ ...f, id: f.id || uid() })));
+  const addFactura = () => setFacturas([...facturas, { id: uid(), pedido: "", factura: "", fechaFactura: hoy(), monto: "", facturista: "", estado: "surtido", reasignada: false }]);
+  const setF = (i, campos) => setFacturas(facturas.map((f, j) => j === i ? { ...f, ...campos } : f));
+  const delF = (i) => setFacturas(facturas.filter((_, j) => j !== i));
+  const totalFacturado = facturas.reduce((s, f) => s + (Number(f.monto) || 0), 0);
+  const [compras, setCompras] = useState(() => (opp.compras || []).map((c) => ({ ...c, id: c.id || uid() })));
+  const addCompra = () => setCompras([...compras, { id: uid(), proveedor: opp.marca || "", numOC: "", fechaOC: hoy(), entrega: "", estado: "pendiente", monto: "", notas: "" }]);
+  const setCo = (i, campos) => setCompras(compras.map((c, j) => j === i ? { ...c, ...campos } : c));
+  const delCo = (i) => setCompras(compras.filter((_, j) => j !== i));
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
       <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
@@ -740,8 +914,40 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc }) {
           <button onClick={onCerrar}><X size={20} style={{ color: C.dim }} /></button>
         </div>
         <div className="p-4 space-y-3 pb-8">
-          <input value={d.cliente} onChange={(e) => setD({ ...d, cliente: e.target.value })} placeholder="Cliente *" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <div>
+            <input value={d.cliente} onChange={(e) => setD({ ...d, cliente: e.target.value, clienteId: "" })} placeholder="Cliente *" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+            {d.cliente.trim() && !d.clienteId ? (() => {
+              const ms = (clientes || []).filter((c) => (c.nombre || "").toLowerCase().includes(d.cliente.trim().toLowerCase())).slice(0, 5);
+              return ms.length ? (
+                <div className="mt-1 space-y-1">
+                  {ms.map((c) => (
+                    <button key={c.id} onClick={() => setD({ ...d, cliente: c.nombre, clienteId: c.id })} className="w-full text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5" style={{ borderColor: C.borde, background: "#fff", color: C.tinta }}>
+                      <Building2 size={12} style={{ color: C.azul }} /> Vincular a: {c.nombre}
+                    </button>
+                  ))}
+                </div>
+              ) : null;
+            })() : null}
+            {d.clienteId ? (
+              <div className="mt-1 text-xs flex items-center gap-1.5" style={{ color: C.verde }}>
+                <Check size={12} /> Vinculado a cliente
+                <button onClick={() => setD({ ...d, clienteId: "" })} className="underline" style={{ color: C.dim }}>desvincular</button>
+              </div>
+            ) : null}
+          </div>
           <input value={d.titulo} onChange={(e) => setD({ ...d, titulo: e.target.value })} placeholder="Proyecto o descripción" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          {d.cliente.trim() ? (() => {
+            const cl = clasificarCliente(d.cliente, pipeline, clientes);
+            const cfg = CLASE_CLIENTE[cl.tipo];
+            if (!cfg && cl.total === 0) return null;
+            const negro = cfg && cfg.bg === "#1A1A1A";
+            return (
+              <div className="rounded-lg border p-2.5 flex items-center gap-2 flex-wrap" style={{ borderColor: cfg ? cfg.punto : C.borde, background: cfg ? cfg.bg : C.panel }}>
+                {cfg ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: negro ? "#000" : "#fff", color: cfg.color, border: `1px solid ${cfg.punto}` }}>{cfg.label}</span> : null}
+                <span className="text-xs" style={{ color: negro ? "#E8E8E8" : C.dim }}>{cl.ganadas} ganadas · {cl.perdidas} perdidas · {cl.activas} activas con este cliente</span>
+              </div>
+            );
+          })() : null}
           <div>
             <div className="text-xs mb-1.5 uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Etapa</div>
             <div className="flex flex-wrap gap-1.5">
@@ -785,6 +991,46 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc }) {
             </div>
           </div>
           <input value={d.vendedor} onChange={(e) => setD({ ...d, vendedor: e.target.value })} placeholder="Vendedor (a quién enviar la oportunidad)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <div className="rounded-xl border p-2.5 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+            <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}>Equipo</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <div className="text-xs mb-1" style={{ color: C.dim }}>Traída por</div>
+                <select value={d.traidoPorId} onChange={(e) => setD({ ...d, traidoPorId: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm" style={inp}>
+                  <option value="">— Nadie del equipo —</option>
+                  {(equipo || []).map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <div className="text-xs mb-1" style={{ color: C.dim }}>Cotizador</div>
+                <select value={d.cotizadorId} onChange={(e) => setD({ ...d, cotizadorId: e.target.value })} className="w-full rounded-lg px-2 py-2 text-sm" style={inp}>
+                  <option value="">— Sin asignar —</option>
+                  {(equipo || []).map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                </select>
+              </div>
+            </div>
+            <input value={d.origen} onChange={(e) => setD({ ...d, origen: e.target.value })} placeholder="Origen: sucursal / vendedor de campo, o «Directo»" className="w-full rounded-lg px-3 py-2 text-sm" style={inp} />
+          </div>
+          <div>
+            <div className="text-xs mb-1" style={{ color: C.dim }}>Fecha de oportunidad entrante</div>
+            <input type="date" value={d.fechaVisita} onChange={(e) => setD({ ...d, fechaVisita: e.target.value })} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          </div>
+          {(() => {
+            const oo = { ...opp, ...d };
+            const t = tiemposOpp(oo);
+            const stale = staleVisita(oo);
+            const hrs = Math.floor(horasSinCambio(oo));
+            return (
+              <div className="rounded-xl border p-3" style={{ borderColor: stale ? C.ambar : C.borde, background: stale ? C.ambarBg : C.panel }}>
+                <div className="flex items-center gap-1.5 text-xs uppercase font-semibold mb-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}><Timer size={12} /> Tiempos</div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div><div className="text-xs" style={{ color: C.dim }}>Respuesta (a cotizar)</div><div className="font-semibold" style={{ color: C.tinta }}>{t.resp != null ? fraseDias(t.resp) : (d.etapa === "visita" ? "sin cotizar aún" : "—")}</div></div>
+                  <div><div className="text-xs" style={{ color: C.dim }}>Ciclo total</div><div className="font-semibold" style={{ color: C.tinta }}>{t.total != null ? fraseDias(t.total) + (t.cerrada ? "" : " (en curso)") : "—"}</div></div>
+                </div>
+                {stale ? <div className="text-xs mt-2 font-semibold" style={{ color: "#9A6A00" }}>⏰ Lleva {hrs} h como oportunidad entrante sin cotizar. Prioriza cotizar a este cliente.</div> : null}
+              </div>
+            );
+          })()}
           {["cotizado", "porcerrar", "oc", "pedido", "facturado"].includes(d.etapa) ? (
             <div className="grid grid-cols-2 gap-2">
               <div><div className="text-xs mb-1" style={{ color: C.dim }}>N° de cotización</div>
@@ -826,19 +1072,101 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc }) {
               </button>
             ) : null}
           </div>
+          {(() => {
+            const venta = Number(d.monto) || 0, costo = Number(d.costo) || 0, margen = venta - costo;
+            const pct = venta > 0 && d.costo !== "" ? Math.round((margen / venta) * 100) : null;
+            return (
+              <div className="rounded-xl border p-2.5" style={{ borderColor: C.borde, background: C.panel }}>
+                <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}>Costo y margen real</div>
+                <input value={d.costo} onChange={(e) => setD({ ...d, costo: e.target.value })} inputMode="decimal" placeholder="Costo de la venta (tu costo neto total)" className="w-full rounded-lg px-3 py-2 text-sm" style={{ ...inp, ...mono }} />
+                {d.costo !== "" && venta > 0 ? (
+                  <div className="flex items-center justify-between text-sm mt-2">
+                    <span style={{ color: C.dim }}>Margen: <b style={{ color: margen >= 0 ? "#1F7A55" : C.rojo }}>{fMXN(margen)}</b></span>
+                    {pct != null ? <span className="font-semibold" style={{ color: margen >= 0 ? "#1F7A55" : C.rojo }}>{pct}%</span> : null}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })()}
+          {(() => {
+            const venta = Number(d.monto) || 0, costo = Number(d.costo) || 0, mg = venta - costo;
+            const pct = venta > 0 ? Math.round(mg / venta * 100) : null;
+            return (
+              <div className="rounded-xl border p-2.5" style={{ borderColor: C.borde, background: C.panel }}>
+                <div className="flex items-center gap-1.5 text-xs uppercase font-semibold mb-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}><BarChart3 size={12} /> Margen real</div>
+                <div className="grid grid-cols-3 gap-2 items-end">
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Venta</div><div className="text-sm font-semibold" style={mono}>{fMXN(venta)}</div></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Costo</div><input value={d.costo} onChange={(e) => setD({ ...d, costo: e.target.value })} inputMode="decimal" placeholder="0" className="w-full rounded-lg px-2 py-1 text-sm" style={{ ...inp, ...mono }} /></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Margen</div><div className="text-sm font-semibold" style={{ ...mono, color: mg >= 0 ? "#1F7A55" : C.rojo }}>{fMXN(mg)}{pct != null ? ` · ${pct}%` : ""}</div></div>
+                </div>
+              </div>
+            );
+          })()}
+          <div className="rounded-xl border p-2.5 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase font-semibold flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}><Package size={12} /> Compras a proveedor</div>
+              <button onClick={addCompra} className="text-xs px-2 py-1 rounded-lg border font-semibold flex items-center gap-1" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Plus size={12} /> OC</button>
+            </div>
+            {compras.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Sin órdenes de compra. Agrega la OC a Schneider/Siemens con su tiempo de entrega.</div> : compras.map((c, i) => (
+              <div key={c.id} className="rounded-lg border p-2 space-y-1.5" style={{ borderColor: c.estado === "recibido" ? C.verde : C.borde, background: "#fff" }}>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input value={c.proveedor} onChange={(e) => setCo(i, { proveedor: e.target.value })} placeholder="Proveedor" className="rounded-lg px-2 py-1.5 text-sm" style={inp} />
+                  <input value={c.numOC} onChange={(e) => setCo(i, { numOC: e.target.value })} placeholder="# OC" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Fecha OC</div><input type="date" value={c.fechaOC} onChange={(e) => setCo(i, { fechaOC: e.target.value })} className="w-full rounded-lg px-2 py-1.5 text-xs" style={inp} /></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Entrega estimada</div><input type="date" value={c.entrega} onChange={(e) => setCo(i, { entrega: e.target.value })} className="w-full rounded-lg px-2 py-1.5 text-xs" style={inp} /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input value={c.monto} onChange={(e) => setCo(i, { monto: e.target.value })} inputMode="decimal" placeholder="Costo" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                  <select value={c.estado} onChange={(e) => setCo(i, { estado: e.target.value })} className="rounded-lg px-2 py-1.5 text-xs" style={inp}><option value="pendiente">Pendiente</option><option value="transito">En tránsito</option><option value="recibido">Recibido</option></select>
+                </div>
+                <div className="flex justify-end"><button onClick={() => delCo(i)} style={{ color: C.rojo }}><Trash2 size={14} /></button></div>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-xl border p-2.5 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase font-semibold flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}><FileText size={12} /> Facturación{facturas.length ? ` · ${fMXN(totalFacturado)}` : ""}</div>
+              <button onClick={addFactura} className="text-xs px-2 py-1 rounded-lg border font-semibold flex items-center gap-1" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Plus size={12} /> Factura</button>
+            </div>
+            {facturas.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Sin pedidos/facturas. Agrega una por cada factura (pueden ser varias por cotización).</div> : facturas.map((f, i) => (
+              <div key={f.id} className="rounded-lg border p-2 space-y-1.5" style={{ borderColor: f.reasignada ? C.verde : C.borde, background: "#fff" }}>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input value={f.pedido} onChange={(e) => setF(i, { pedido: e.target.value })} placeholder="# Pedido" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                  <input value={f.factura} onChange={(e) => setF(i, { factura: e.target.value })} placeholder="# Factura" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input type="date" value={f.fechaFactura} onChange={(e) => setF(i, { fechaFactura: e.target.value })} className="rounded-lg px-2 py-1.5 text-xs" style={inp} />
+                  <input value={f.monto} onChange={(e) => setF(i, { monto: e.target.value })} inputMode="decimal" placeholder="Monto sin IVA" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input value={f.facturista} onChange={(e) => setF(i, { facturista: e.target.value })} placeholder="Facturista" className="rounded-lg px-2 py-1.5 text-xs" style={inp} />
+                  <select value={f.estado} onChange={(e) => setF(i, { estado: e.target.value })} className="rounded-lg px-2 py-1.5 text-xs" style={inp}><option value="surtido">Surtido</option><option value="parcial">Parcial</option><option value="pendiente">Pendiente</option></select>
+                </div>
+                <div className="flex items-center justify-between">
+                  <button onClick={() => setF(i, { reasignada: !f.reasignada })} className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: f.reasignada ? "#1F7A55" : C.dim }}>
+                    <span className="w-4 h-4 rounded border flex items-center justify-center" style={{ borderColor: f.reasignada ? C.verde : C.borde, background: f.reasignada ? C.verde : "#fff" }}>{f.reasignada ? <Check size={11} style={{ color: "#fff" }} /> : null}</span>
+                    Reasignada
+                  </button>
+                  <button onClick={() => delF(i)} style={{ color: C.rojo }}><Trash2 size={14} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
           <textarea value={d.notas} onChange={(e) => setD({ ...d, notas: e.target.value })} placeholder="Notas y acuerdos de visita" rows={3} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
           {!nueva && d.cliente.trim() ? (
             <button onClick={() => enviarTexto(mensajeEstatus((d.vendedor || "").trim(), [{ ...opp, ...d, monto: d.moneda === "USD" && d.monto ? Math.round(Number(d.monto) * (tc || 0)) : (d.monto === "" ? null : Number(d.monto)) }]))} className="w-full py-2.5 mb-2 rounded-xl border font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.azul, color: "#2C5A8F", background: C.azulBg }}>
               <Send size={15} /> Pedir estatus al vendedor
             </button>
           ) : null}
-          {!nueva ? (
+          {!nueva && onDuplicar ? (
             <button onClick={onDuplicar} className="w-full py-2.5 mb-2 rounded-xl border font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.borde, color: C.tinta, background: C.panel }}>
               <Copy size={15} /> Duplicar oportunidad
             </button>
           ) : null}
           <div className="flex gap-2 pt-1">
-            <button onClick={() => d.cliente.trim() && onGuardar({ ...opp, ...d, monto: d.monto === "" ? null : (d.moneda === "USD" ? Math.round(Number(d.monto) * (tc || 0)) : Number(d.monto)), moneda: d.moneda, montoOrig: d.moneda === "USD" && d.monto !== "" ? Number(d.monto) : null, tcCaptura: d.moneda === "USD" ? (tc || null) : null, margen: d.margen === "" ? null : Number(d.margen) })}
+            <button onClick={() => d.cliente.trim() && onGuardar({ ...opp, ...d, facturas, compras, costo: d.costo === "" ? null : Number(d.costo), monto: d.monto === "" ? null : (d.moneda === "USD" ? Math.round(Number(d.monto) * (tc || 0)) : Number(d.monto)), moneda: d.moneda, montoOrig: d.moneda === "USD" && d.monto !== "" ? Number(d.monto) : null, tcCaptura: d.moneda === "USD" ? (tc || null) : null, margen: d.margen === "" ? null : Number(d.margen) })}
               className="flex-1 py-3 rounded-xl font-semibold" style={{ background: d.cliente.trim() ? C.tinta : C.borde, color: "#fff" }}>
               {nueva ? "Crear oportunidad" : "Guardar cambios"}
             </button>
@@ -850,11 +1178,972 @@ function OppEditor({ opp, onGuardar, onEliminar, onDuplicar, onCerrar, tc }) {
   );
 }
 
+/* ── Editor de Cliente (con sus contactos) ────────────────────────── */
+function ClienteEditor({ cliente, contactos, actividades, opps, onGuardar, onEliminar, onCerrar }) {
+  const nuevo = !cliente.id;
+  const [d, setD] = useState({
+    nombre: cliente.nombre || "", tipo: cliente.tipo || "", estado: cliente.estado || "prospecto",
+    plaza: cliente.plaza || "", giro: cliente.giro || "", rfc: cliente.rfc || "",
+    direccion: cliente.direccion || "", notas: cliente.notas || "", clave: !!cliente.clave, alliance: !!cliente.alliance,
+  });
+  const [cts, setCts] = useState(() => (contactos || []).filter((c) => c.clienteId === cliente.id).map((c) => ({ ...c })));
+  const [acts, setActs] = useState(() => (actividades || []).filter((a) => a.clienteId === cliente.id).sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((a) => ({ ...a })));
+  const [na, setNa] = useState({ tipo: "llamada", fecha: hoy(), nota: "" });
+  const relacionadas = (opps || []).filter((o) => (cliente.id && o.clienteId === cliente.id) || (!o.clienteId && cliente.nombre && (o.cliente || "").trim().toLowerCase() === (cliente.nombre || "").trim().toLowerCase()));
+  const addContacto = () => setCts([...cts, { id: uid(), nombre: "", puesto: "", telefono: "", correo: "", whatsapp: "", rolDecision: "" }]);
+  const updContacto = (i, campos) => setCts(cts.map((c, j) => j === i ? { ...c, ...campos } : c));
+  const delContacto = (i) => setCts(cts.filter((_, j) => j !== i));
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.fondo, borderColor: C.borde }}>
+          <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold">{nuevo ? "Nuevo cliente" : "Editar cliente"}</div>
+          <button onClick={onCerrar}><X size={20} style={{ color: C.dim }} /></button>
+        </div>
+        <div className="p-4 space-y-3 pb-8">
+          <input value={d.nombre} onChange={(e) => setD({ ...d, nombre: e.target.value })} placeholder="Nombre / razón social *" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <div>
+            <div className="text-xs mb-1.5 uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Tipo</div>
+            <div className="flex flex-wrap gap-1.5">
+              {TIPOS_CLIENTE.map((t) => (
+                <button key={t.id} onClick={() => setD({ ...d, tipo: d.tipo === t.id ? "" : t.id })} className="text-xs px-2.5 py-1.5 rounded-lg border font-semibold"
+                  style={{ borderColor: d.tipo === t.id ? C.tinta : C.borde, color: d.tipo === t.id ? C.tinta : C.dim, background: d.tipo === t.id ? "#fff" : "transparent" }}>{t.label}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs mb-1.5 uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Estado de la relación</div>
+            <div className="flex flex-wrap gap-1.5">
+              {ESTADOS_CLIENTE.map((s) => (
+                <button key={s.id} onClick={() => setD({ ...d, estado: s.id })} className="text-xs px-2.5 py-1.5 rounded-lg border font-semibold"
+                  style={{ borderColor: d.estado === s.id ? s.color : C.borde, color: d.estado === s.id ? s.color : C.dim, background: d.estado === s.id ? "#fff" : "transparent" }}>{s.label}</button>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {[["clave", "⭐ Cuenta clave"], ["alliance", "Integrador Alliance"]].map(([k, lbl]) => (
+              <button key={k} onClick={() => setD({ ...d, [k]: !d[k] })} className="text-xs px-3 py-2 rounded-lg border font-semibold flex items-center gap-1.5" style={{ borderColor: d[k] ? "#C9A227" : C.borde, color: d[k] ? "#8A5A00" : C.dim, background: d[k] ? "#FBF1D9" : "transparent" }}>
+                <span className="w-3.5 h-3.5 rounded border flex items-center justify-center" style={{ borderColor: d[k] ? "#C9A227" : C.borde, background: d[k] ? "#C9A227" : "#fff" }}>{d[k] ? <Check size={10} style={{ color: "#fff" }} /> : null}</span>
+                {lbl}
+              </button>
+            ))}
+          </div>
+          {(() => {
+            const cl = clasificarCliente(d.nombre, opps, [{ ...cliente, ...d }]);
+            const cfg = CLASE_CLIENTE[cl.tipo];
+            return (
+              <div className="rounded-lg border p-2.5 flex items-center gap-2 flex-wrap" style={{ borderColor: C.borde, background: C.panel }}>
+                <span className="text-xs" style={{ color: C.dim }}>Historial: <b style={{ color: C.verde }}>{cl.ganadas} ganadas</b> · {cl.perdidas} perdidas · {cl.activas} activas</span>
+                {cfg ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold ml-auto" style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}{cl.tipo === "clave" && !cl.clave && !cl.alliance ? " (por historial)" : ""}</span> : null}
+              </div>
+            );
+          })()}
+          <div className="grid grid-cols-2 gap-2">
+            <input value={d.plaza} onChange={(e) => setD({ ...d, plaza: e.target.value })} placeholder="Plaza (León…)" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
+            <input value={d.giro} onChange={(e) => setD({ ...d, giro: e.target.value })} placeholder="Giro (automotriz…)" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input value={d.rfc} onChange={(e) => setD({ ...d, rfc: e.target.value })} placeholder="RFC" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+            <input value={d.direccion} onChange={(e) => setD({ ...d, direccion: e.target.value })} placeholder="Dirección" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          </div>
+          <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase font-semibold flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}><Users size={12} /> Contactos</div>
+              <button onClick={addContacto} className="text-xs px-2 py-1 rounded-lg border font-semibold flex items-center gap-1" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Plus size={12} /> Agregar</button>
+            </div>
+            {cts.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Sin contactos. Agrega a las personas clave de esta cuenta.</div> : null}
+            {cts.map((c, i) => (
+              <div key={c.id} className="rounded-lg border p-2 space-y-1.5" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="flex gap-1.5">
+                  <input value={c.nombre} onChange={(e) => updContacto(i, { nombre: e.target.value })} placeholder="Nombre" className="flex-1 rounded-lg px-2 py-1.5 text-sm" style={inp} />
+                  <button onClick={() => delContacto(i)} className="px-2 rounded-lg border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={14} /></button>
+                </div>
+                <input value={c.puesto} onChange={(e) => updContacto(i, { puesto: e.target.value })} placeholder="Puesto" className="w-full rounded-lg px-2 py-1.5 text-sm" style={inp} />
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input value={c.telefono} onChange={(e) => updContacto(i, { telefono: e.target.value })} placeholder="Teléfono" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                  <input value={c.whatsapp} onChange={(e) => updContacto(i, { whatsapp: e.target.value })} placeholder="WhatsApp" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                </div>
+                <input value={c.correo} onChange={(e) => updContacto(i, { correo: e.target.value })} placeholder="Correo" className="w-full rounded-lg px-2 py-1.5 text-sm" style={inp} />
+                <div className="flex flex-wrap gap-1">
+                  {ROLES_DECISION.map((r) => (
+                    <button key={r.id} onClick={() => updContacto(i, { rolDecision: c.rolDecision === r.id ? "" : r.id })} className="text-xs px-2 py-1 rounded border font-semibold"
+                      style={{ borderColor: c.rolDecision === r.id ? C.azul : C.borde, color: c.rolDecision === r.id ? "#2C5A8F" : C.dim, background: c.rolDecision === r.id ? C.azulBg : "transparent" }}>{r.label}</button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          {relacionadas.length > 0 ? (
+            <div className="rounded-xl border p-3 space-y-1.5" style={{ borderColor: C.borde, background: C.panel }}>
+              <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Oportunidades de este cliente ({relacionadas.length})</div>
+              {relacionadas.slice(0, 8).map((o) => (
+                <div key={o.id} className="flex items-center justify-between text-sm gap-2">
+                  <span className="truncate" style={{ color: C.tinta }}>{o.titulo || o.cliente}</span>
+                  <span style={{ ...mono, color: C.dim }}>{fMXN(o.monto || 0)}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+            <div className="text-xs uppercase font-semibold flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}><CalendarDays size={12} /> Actividades / bitácora</div>
+            <div className="rounded-lg border p-2 space-y-1.5" style={{ borderColor: C.borde, background: "#fff" }}>
+              <div className="flex flex-wrap gap-1">
+                {TIPOS_ACTIVIDAD.map((t) => (
+                  <button key={t.id} onClick={() => setNa({ ...na, tipo: t.id })} className="text-xs px-2 py-1 rounded border font-semibold"
+                    style={{ borderColor: na.tipo === t.id ? C.tinta : C.borde, color: na.tipo === t.id ? C.tinta : C.dim, background: na.tipo === t.id ? C.fondo : "transparent" }}>{t.label}</button>
+                ))}
+              </div>
+              <div className="flex gap-1.5">
+                <input type="date" value={na.fecha} onChange={(e) => setNa({ ...na, fecha: e.target.value })} className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                <input value={na.nota} onChange={(e) => setNa({ ...na, nota: e.target.value })} placeholder="¿Qué pasó o se acordó?" className="flex-1 rounded-lg px-2 py-1.5 text-sm" style={inp} />
+              </div>
+              <button onClick={() => { if (na.nota.trim()) { setActs([{ id: uid(), tipo: na.tipo, fecha: na.fecha, nota: na.nota.trim() }, ...acts]); setNa({ tipo: "llamada", fecha: hoy(), nota: "" }); } }}
+                className="w-full text-xs py-1.5 rounded-lg font-semibold" style={{ background: na.nota.trim() ? C.tinta : C.borde, color: "#fff" }}>Registrar actividad</button>
+            </div>
+            {acts.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Sin actividades. Registra cada llamada, correo o reunión para no perder el hilo.</div> : (
+              <div className="space-y-1">
+                {acts.map((a, i) => {
+                  const t = TIPOS_ACTIVIDAD.find((x) => x.id === a.tipo) || TIPOS_ACTIVIDAD[0];
+                  return (
+                    <div key={a.id} className="flex items-start gap-2 text-sm py-1 border-b last:border-0" style={{ borderColor: C.borde }}>
+                      <span className="text-xs px-1.5 py-0.5 rounded font-semibold whitespace-nowrap" style={{ background: C.fondo, color: C.dim }}>{t.label}</span>
+                      <div className="flex-1 min-w-0">
+                        <div style={{ color: C.tinta }}>{a.nota}</div>
+                        <div className="text-xs" style={{ ...mono, color: C.dim }}>{a.fecha}</div>
+                      </div>
+                      <button onClick={() => setActs(acts.filter((_, j) => j !== i))} style={{ color: C.rojo }}><Trash2 size={13} /></button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <textarea value={d.notas} onChange={(e) => setD({ ...d, notas: e.target.value })} placeholder="Notas de la cuenta" rows={3} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => d.nombre.trim() && onGuardar({ ...cliente, ...d }, cts.filter((c) => c.nombre.trim()), acts)}
+              className="flex-1 py-3 rounded-xl font-semibold" style={{ background: d.nombre.trim() ? C.tinta : C.borde, color: "#fff" }}>
+              {nuevo ? "Crear cliente" : "Guardar cambios"}
+            </button>
+            {!nuevo && <button onClick={onEliminar} className="px-4 rounded-xl border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={18} /></button>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Catálogo de productos ────────────────────────────────────────── */
+function ProdForm({ prod, onGuardar, onCancelar, onEliminar, descuentos }) {
+  const [d, setD] = useState({ codigo: prod.codigo || "", descripcion: prod.descripcion || "", marca: prod.marca || "", unidad: prod.unidad || "pza", precio: prod.precio ?? "", moneda: prod.moneda || "MXN", datasheet: prod.datasheet || "", precioLista: prod.precioLista ?? "", codigoDescuento: prod.codigoDescuento || "" });
+  const neto = costoNeto(d, descuentos);
+  const f = factorDe(d.codigoDescuento, descuentos);
+  return (
+    <div className="space-y-2">
+      <div style={dsp} className="uppercase text-xs font-semibold" >{prod.id ? "Editar producto" : "Nuevo producto"}</div>
+      <input value={d.descripcion} onChange={(e) => setD({ ...d, descripcion: e.target.value })} placeholder="Descripción *" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+      <div className="grid grid-cols-2 gap-2">
+        <input value={d.codigo} onChange={(e) => setD({ ...d, codigo: e.target.value })} placeholder="Código" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+        <input value={d.marca} onChange={(e) => setD({ ...d, marca: e.target.value })} placeholder="Marca" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <input value={d.precioLista} onChange={(e) => setD({ ...d, precioLista: e.target.value })} placeholder="Precio lista" inputMode="decimal" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+        <input value={d.codigoDescuento} onChange={(e) => setD({ ...d, codigoDescuento: e.target.value })} placeholder="Cód. dto (003-APO)" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+        <select value={d.moneda} onChange={(e) => setD({ ...d, moneda: e.target.value })} className="rounded-lg px-2 py-2.5 text-sm" style={inp}><option>MXN</option><option>USD</option></select>
+      </div>
+      {(d.precioLista !== "" || d.codigoDescuento) ? (
+        <div className="rounded-lg border px-3 py-2 text-xs flex items-center justify-between" style={{ borderColor: neto != null ? C.verde : C.borde, background: neto != null ? C.verdeBg : C.panel }}>
+          <span style={{ color: C.dim }}>{f != null ? `Factor ${f} → costo neto` : (d.codigoDescuento ? "Código no está en la carátula" : "Falta código de descuento")}</span>
+          <span className="font-semibold" style={{ ...mono, color: neto != null ? "#1F7A55" : C.dim }}>{neto != null ? fMXN(neto) : "—"}</span>
+        </div>
+      ) : null}
+      <div className="grid grid-cols-2 gap-2">
+        <input value={d.precio} onChange={(e) => setD({ ...d, precio: e.target.value })} placeholder="Costo manual (opcional)" inputMode="decimal" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+        <input value={d.unidad} onChange={(e) => setD({ ...d, unidad: e.target.value })} placeholder="Unidad" className="rounded-lg px-3 py-2.5 text-sm" style={inp} />
+      </div>
+      <input value={d.datasheet} onChange={(e) => setD({ ...d, datasheet: e.target.value })} placeholder="Link de datasheet (URL de la hoja de datos)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+      <div className="flex gap-2">
+        <button onClick={() => d.descripcion.trim() && onGuardar({ ...prod, ...d, precio: d.precio === "" ? null : Number(d.precio), precioLista: d.precioLista === "" ? null : Number(d.precioLista) })} className="flex-1 py-2.5 rounded-xl font-semibold" style={{ background: d.descripcion.trim() ? C.tinta : C.borde, color: "#fff" }}>{prod.id ? "Guardar" : "Agregar"}</button>
+        {onEliminar && <button onClick={onEliminar} className="px-4 rounded-xl border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={18} /></button>}
+        <button onClick={onCancelar} className="px-3 rounded-xl border text-sm" style={{ borderColor: C.borde, color: C.dim }}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+function CatalogoSheet({ productos, descuentos, onGuardarProd, onEliminarProd, onImportarProductos, onImportarDescuentos, onCerrar }) {
+  const [ed, setEd] = useState(null);
+  const [q, setQ] = useState("");
+  const [msg, setMsg] = useState("");
+  const [marcaImp, setMarcaImp] = useState("");
+  const [versionImp, setVersionImp] = useState("");
+  const lista = (productos || []).filter((p) => !q || `${p.codigo} ${p.descripcion} ${p.marca}`.toLowerCase().includes(q.toLowerCase()));
+  const listasCargadas = (() => {
+    const m = {};
+    (productos || []).forEach((p) => { const k = (p.marca || "Sin marca").trim() || "Sin marca"; if (!m[k]) m[k] = { n: 0, version: "" }; m[k].n++; if (p.listaVersion) m[k].version = p.listaVersion; });
+    return Object.entries(m).sort((a, b) => b[1].n - a[1].n);
+  })();
+  const subirCaratula = async (ev) => {
+    const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (!f) return;
+    setMsg("Leyendo carátula…");
+    try { const r = mapearCaratula(leerXLSX(await f.arrayBuffer())); if (r.error) { setMsg(r.error); return; } onImportarDescuentos(r.items); setMsg(`Carátula cargada y guardada para el equipo: ${r.items.length} códigos de descuento.`); }
+    catch (e) { setMsg("No pude leer el archivo de la carátula."); }
+  };
+  const subirLista = async (ev) => {
+    const f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (!f) return;
+    if (!marcaImp.trim()) { setMsg("Primero escribe la marca de esta lista (ej. Schneider) arriba."); return; }
+    setMsg("Leyendo lista de precios…");
+    try { const r = mapearListaPrecios(leerXLSX(await f.arrayBuffer()), productos); if (r.error) { setMsg(r.error); return; } onImportarProductos([...r.nuevos, ...r.repetidos], marcaImp.trim(), versionImp.trim()); setMsg(`Lista de ${marcaImp.trim()} cargada: ${r.nuevos.length} nuevos${r.repetidos.length ? `, ${r.repetidos.length} actualizados` : ""}.`); }
+    catch (e) { setMsg("No pude leer el archivo de la lista."); }
+  };
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.fondo, borderColor: C.borde }}>
+          <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold flex items-center gap-1.5"><Package size={16} /> Catálogo <span style={{ color: C.dim }} className="normal-case font-normal">· {(descuentos || []).length} dtos</span></div>
+          <button onClick={onCerrar}><X size={20} style={{ color: C.dim }} /></button>
+        </div>
+        <div className="p-4 space-y-3 pb-8">
+          {ed ? (
+            <ProdForm prod={ed} descuentos={descuentos} onGuardar={(p) => { onGuardarProd(p); setEd(null); }} onCancelar={() => setEd(null)} onEliminar={ed.id ? () => { onEliminarProd(ed.id); setEd(null); } : null} />
+          ) : (
+            <>
+              <button onClick={() => setEd({})} className="w-full py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}><Plus size={16} /> Nuevo producto</button>
+              <div className="grid grid-cols-2 gap-2">
+                <input value={marcaImp} onChange={(e) => setMarcaImp(e.target.value)} placeholder="Marca (Schneider, Siemens…)" className="rounded-lg px-3 py-2 text-sm" style={inp} />
+                <input value={versionImp} onChange={(e) => setVersionImp(e.target.value)} placeholder="Versión (06 Abr 2026)" className="rounded-lg px-3 py-2 text-sm" style={inp} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="py-2.5 rounded-xl border font-semibold text-sm flex items-center justify-center gap-1.5" style={{ borderColor: C.ambar, color: C.tinta, background: C.panel, cursor: "pointer" }}>
+                  <FileUp size={15} style={{ color: C.ambar }} /> Importar precios
+                  <input type="file" accept=".xlsx" onChange={subirLista} className="hidden" />
+                </label>
+                <label className="py-2.5 rounded-xl border font-semibold text-sm flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: C.panel, cursor: "pointer" }}>
+                  <FileSpreadsheet size={15} /> Importar carátula
+                  <input type="file" accept=".xlsx" onChange={subirCaratula} className="hidden" />
+                </label>
+              </div>
+              {msg ? <div className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: C.borde, background: C.panel, color: C.tinta }}>{msg}</div> : null}
+              {listasCargadas.length ? (
+                <div className="rounded-lg border px-3 py-2" style={{ borderColor: C.borde, background: C.panel }}>
+                  <div className="text-xs uppercase font-semibold mb-1" style={{ ...dsp, color: C.dim, letterSpacing: "0.06em" }}>Listas cargadas · {(descuentos || []).length} descuentos</div>
+                  {listasCargadas.map(([m, info]) => <div key={m} className="text-xs flex justify-between" style={{ color: C.tinta }}><span className="font-semibold truncate">{m}</span><span className="whitespace-nowrap ml-2" style={{ color: C.dim }}>{info.n} prod{info.version ? " · " + info.version : ""}</span></div>)}
+                </div>
+              ) : null}
+              <div className="relative">
+                <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: C.dim }} />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por código, descripción o marca…" className="w-full rounded-lg pl-8 pr-3 py-2 text-sm" style={inp} />
+              </div>
+              {lista.length === 0 ? <div className="text-sm text-center py-6" style={{ color: C.dim }}>Catálogo vacío. Agrega productos, o importa tu lista de precios y la carátula de descuentos.</div> : (
+                <div className="space-y-1.5">
+                  {lista.slice(0, 300).map((p) => {
+                    const neto = costoNeto(p, descuentos);
+                    return (
+                      <button key={p.id} onClick={() => setEd(p)} className="w-full text-left rounded-xl border px-3 py-2 flex items-center gap-2" style={{ borderColor: C.borde, background: "#fff" }}>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold truncate text-sm" style={{ color: C.tinta }}>{p.descripcion}</div>
+                          <div className="text-xs truncate" style={{ color: C.dim }}>{[p.codigo, p.marca, p.codigoDescuento && "dto " + p.codigoDescuento].filter(Boolean).join(" · ")}</div>
+                        </div>
+                        <div className="text-right whitespace-nowrap">
+                          {neto != null ? <div style={{ ...mono, color: "#1F7A55" }} className="text-sm font-semibold">{fMXN(neto)}</div> : <span style={{ ...mono, color: C.tinta }} className="text-sm">{fMXN(p.precio || 0)}</span>}
+                          {neto != null && p.precioLista ? <div style={{ ...mono, color: C.dim }} className="text-[10px]">lista {fMXN(p.precioLista)}</div> : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {lista.length > 300 ? <div className="text-xs text-center py-2" style={{ color: C.dim }}>Mostrando 300 de {lista.length}. Usa el buscador.</div> : null}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Editor de Cotización (partidas + totales) ────────────────────── */
+function CotizacionEditor({ cot, clientes, productos, descuentos, folioAuto, onGuardar, onEliminar, onCerrar }) {
+  const nueva = !cot.id;
+  const [d, setD] = useState({
+    cliente: cot.cliente || "", clienteId: cot.clienteId || "",
+    representante: cot.representante || "", domicilio: cot.domicilio || "", cotizador: cot.cotizador || "",
+    folio: cot.folio || folioAuto || "", fecha: cot.fecha || hoy(),
+    estado: cot.estado || "borrador", moneda: cot.moneda || "MXN",
+    iva: cot.iva !== false, notas: cot.notas || "", margen: cot.margen != null ? cot.margen : 15,
+  });
+  const [parts, setParts] = useState(() => (cot.partidas || []).map((p) => ({ ...p, id: p.id || uid() })));
+  const [pickProd, setPickProd] = useState(false);
+  const [buscaProd, setBuscaProd] = useState("");
+  const setP = (i, campos) => setParts(parts.map((p, j) => j === i ? { ...p, ...campos } : p));
+  const delP = (i) => setParts(parts.filter((_, j) => j !== i));
+  const conMargen = (costo, margen) => Math.round(Number(costo) * (1 + (Number(margen) || 0) / 100) * 100) / 100;
+  const setMargen = (v) => {
+    setD({ ...d, margen: v });
+    setParts(parts.map((p) => (p.costo != null && p.costo !== "") ? { ...p, precio: conMargen(p.costo, v) } : p));
+  };
+  const addLibre = () => setParts([...parts, { id: uid(), descripcion: "", cantidad: "1", precio: "", descuento: "" }]);
+  const addProd = (p) => {
+    const costo = costoNeto(p, descuentos);
+    const precio = costo != null ? conMargen(costo, d.margen) : (p.precio ?? "");
+    setParts([...parts, { id: uid(), descripcion: p.descripcion, codigo: p.codigo || "", cantidad: "1", costo: costo != null ? costo : "", precioLista: p.precioLista ?? "", codigoDescuento: p.codigoDescuento || "", precio, descuento: "", datasheet: p.datasheet || "" }]);
+    setPickProd(false); setBuscaProd("");
+  };
+  const sub = parts.reduce((s, p) => s + (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100), 0);
+  const iva = d.iva ? sub * 0.16 : 0;
+  const total = sub + iva;
+  const cur = d.moneda === "USD" ? " USD" : "";
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.fondo, borderColor: C.borde }}>
+          <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold">{nueva ? "Nueva cotización" : "Editar cotización"}</div>
+          <button onClick={onCerrar}><X size={20} style={{ color: C.dim }} /></button>
+        </div>
+        <div className="p-4 space-y-3 pb-8">
+          <div>
+            <input value={d.cliente} onChange={(e) => setD({ ...d, cliente: e.target.value, clienteId: "" })} placeholder="Cliente *" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+            {d.cliente.trim() && !d.clienteId ? (() => {
+              const ms = (clientes || []).filter((c) => (c.nombre || "").toLowerCase().includes(d.cliente.trim().toLowerCase())).slice(0, 5);
+              return ms.length ? <div className="mt-1 space-y-1">{ms.map((c) => <button key={c.id} onClick={() => setD({ ...d, cliente: c.nombre, clienteId: c.id })} className="w-full text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5" style={{ borderColor: C.borde, background: "#fff", color: C.tinta }}><Building2 size={12} style={{ color: C.azul }} /> Vincular a: {c.nombre}</button>)}</div> : null;
+            })() : null}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input value={d.folio} onChange={(e) => setD({ ...d, folio: e.target.value })} placeholder="Folio" className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+            <input type="date" value={d.fecha} onChange={(e) => setD({ ...d, fecha: e.target.value })} className="rounded-lg px-3 py-2.5 text-sm" style={{ ...inp, ...mono }} />
+          </div>
+          <input value={d.representante} onChange={(e) => setD({ ...d, representante: e.target.value })} placeholder="Representante (contacto del cliente)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <input value={d.domicilio} onChange={(e) => setD({ ...d, domicilio: e.target.value })} placeholder="Domicilio del cliente" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <input value={d.cotizador} onChange={(e) => setD({ ...d, cotizador: e.target.value })} placeholder="Cotizador (tú)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <div className="flex flex-wrap gap-1.5 items-center">
+            {ESTADOS_COTIZACION.map((s) => <button key={s.id} onClick={() => setD({ ...d, estado: s.id })} className="text-xs px-2.5 py-1.5 rounded-lg border font-semibold" style={{ borderColor: d.estado === s.id ? s.color : C.borde, color: d.estado === s.id ? s.color : C.dim, background: d.estado === s.id ? "#fff" : "transparent" }}>{s.label}</button>)}
+            <div className="ml-auto flex rounded-lg overflow-hidden border" style={{ borderColor: C.borde }}>
+              {["MXN", "USD"].map((m) => <button key={m} onClick={() => setD({ ...d, moneda: m })} className="text-xs px-2.5 py-1.5 font-semibold" style={{ background: d.moneda === m ? C.tinta : "#fff", color: d.moneda === m ? "#fff" : C.dim }}>{m}</button>)}
+            </div>
+          </div>
+          <div className="rounded-xl border p-2 space-y-2" style={{ borderColor: C.borde, background: C.panel }}>
+            <div className="flex items-center justify-between">
+              <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Partidas</div>
+              <div className="flex gap-1.5">
+                <button onClick={() => setPickProd(true)} className="text-xs px-2 py-1 rounded-lg border font-semibold flex items-center gap-1" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Package size={12} /> Catálogo</button>
+                <button onClick={addLibre} className="text-xs px-2 py-1 rounded-lg border font-semibold flex items-center gap-1" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Plus size={12} /> Línea</button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border px-2 py-1.5" style={{ borderColor: C.ambar, background: C.ambarBg }}>
+              <span className="text-xs font-semibold whitespace-nowrap" style={{ color: "#8A5A00" }}>Margen</span>
+              <input value={d.margen} onChange={(e) => setMargen(e.target.value)} inputMode="decimal" className="w-14 rounded-lg px-2 py-1 text-sm text-center font-semibold" style={{ ...inp, ...mono }} />
+              <span className="text-xs" style={{ color: C.dim }}>% markup</span>
+              <div className="ml-auto flex gap-1">
+                {[10, 15, 20, 25, 30].map((m) => <button key={m} onClick={() => setMargen(m)} className="text-[11px] px-1.5 py-0.5 rounded font-semibold" style={{ background: Number(d.margen) === m ? C.ambar : "#fff", color: Number(d.margen) === m ? "#fff" : C.dim, border: `1px solid ${C.borde}` }}>{m}</button>)}
+              </div>
+            </div>
+            {parts.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Agrega productos del catálogo o líneas libres.</div> : parts.map((p, i) => {
+              const imp = (Number(p.cantidad) || 0) * (Number(p.precio) || 0) * (1 - (Number(p.descuento) || 0) / 100);
+              return (
+                <div key={p.id} className="rounded-lg border p-2 space-y-1.5" style={{ borderColor: C.borde, background: "#fff" }}>
+                  <div className="flex gap-1.5">
+                    <input value={p.descripcion} onChange={(e) => setP(i, { descripcion: e.target.value })} placeholder="Descripción" className="flex-1 rounded-lg px-2 py-1.5 text-sm" style={inp} />
+                    <button onClick={() => delP(i)} className="px-2 rounded-lg border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={14} /></button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5 items-center">
+                    <input value={p.cantidad} onChange={(e) => setP(i, { cantidad: e.target.value })} placeholder="Cant." inputMode="decimal" className="rounded-lg px-2 py-1.5 text-sm text-center" style={{ ...inp, ...mono }} />
+                    <input value={p.precio} onChange={(e) => setP(i, { precio: e.target.value })} placeholder="P.unit" inputMode="decimal" className="rounded-lg px-2 py-1.5 text-sm" style={{ ...inp, ...mono }} />
+                    <input value={p.descuento} onChange={(e) => setP(i, { descuento: e.target.value })} placeholder="Desc%" inputMode="decimal" className="rounded-lg px-2 py-1.5 text-sm text-center" style={{ ...inp, ...mono }} />
+                    <div className="text-sm text-right font-semibold" style={{ ...mono, color: C.tinta }}>{fMXN(imp)}</div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <input value={p.tiempo || ""} onChange={(e) => setP(i, { tiempo: e.target.value })} placeholder="Tiempo estim. (26-34 días)" className="rounded-lg px-2 py-1.5 text-xs" style={inp} />
+                    <input value={p.datasheet || ""} onChange={(e) => setP(i, { datasheet: e.target.value })} placeholder="Link datasheet (DS)" className="rounded-lg px-2 py-1.5 text-xs" style={inp} />
+                  </div>
+                  {p.costo != null && p.costo !== "" ? <div className="text-[10px]" style={{ ...mono, color: "#1F7A55" }}>costo {fMXN(p.costo)}{p.precioLista ? " · lista " + fMXN(p.precioLista) : ""}{p.codigoDescuento ? " · " + p.codigoDescuento : ""} · +{d.margen || 0}%</div> : null}
+                </div>
+              );
+            })}
+          </div>
+          <div className="rounded-xl border p-3 space-y-1" style={{ borderColor: C.borde, background: "#fff" }}>
+            <div className="flex justify-between text-sm"><span style={{ color: C.dim }}>Subtotal</span><span style={mono}>{fMXN(sub)}{cur}</span></div>
+            <div className="flex justify-between text-sm items-center">
+              <button onClick={() => setD({ ...d, iva: !d.iva })} className="flex items-center gap-1.5" style={{ color: C.dim }}>
+                <span className="w-4 h-4 rounded border flex items-center justify-center" style={{ borderColor: C.borde, background: d.iva ? C.tinta : "#fff" }}>{d.iva ? <Check size={11} style={{ color: "#fff" }} /> : null}</span>
+                IVA 16%
+              </button>
+              <span style={mono}>{fMXN(iva)}{cur}</span>
+            </div>
+            <div className="flex justify-between text-base font-bold pt-1 border-t" style={{ borderColor: C.borde, color: C.tinta }}><span>Total</span><span style={mono}>{fMXN(total)}{cur}</span></div>
+          </div>
+          <textarea value={d.notas} onChange={(e) => setD({ ...d, notas: e.target.value })} placeholder="Notas / condiciones (tiempo de entrega, vigencia…)" rows={2} className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => pdfCotizacion({ ...cot, ...d, partidas: parts })} className="py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><FileDown size={16} /> PDF</button>
+            <button onClick={() => exportarCotizacionXLSX({ ...cot, ...d, partidas: parts }, numeroALetras(sub), `Cotizacion_${(d.folio || "brida").replace(/[^\w-]/g, "")}.xlsx`)} className="py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Download size={16} /> Excel</button>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => d.cliente.trim() && onGuardar({ ...cot, ...d, partidas: parts })} className="flex-1 py-3 rounded-xl font-semibold" style={{ background: d.cliente.trim() ? C.tinta : C.borde, color: "#fff" }}>{nueva ? "Crear cotización" : "Guardar cambios"}</button>
+            {!nueva && <button onClick={onEliminar} className="px-4 rounded-xl border" style={{ borderColor: C.borde, color: C.rojo }}><Trash2 size={18} /></button>}
+          </div>
+        </div>
+      </div>
+      {pickProd && (
+        <div className="fixed inset-0 z-[60] flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={() => setPickProd(false)}>
+          <div className="rounded-t-2xl max-h-[70vh] overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.fondo, borderColor: C.borde }}>
+              <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold">Elegir del catálogo</div>
+              <button onClick={() => setPickProd(false)}><X size={20} style={{ color: C.dim }} /></button>
+            </div>
+            <div className="p-4 space-y-1.5 pb-8">
+              <div className="relative">
+                <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: C.dim }} />
+                <input value={buscaProd} onChange={(e) => setBuscaProd(e.target.value)} placeholder="Buscar código o descripción…" className="w-full rounded-lg pl-8 pr-3 py-2 text-sm" style={inp} autoFocus />
+              </div>
+              {(() => {
+                if ((productos || []).length === 0) return <div className="text-sm text-center py-4" style={{ color: C.dim }}>El catálogo está vacío. Llénalo desde el botón «Catálogo» en la pestaña Cotiza.</div>;
+                const q = buscaProd.trim().toLowerCase();
+                const filtrados = (productos || []).filter((p) => !q || `${p.codigo} ${p.descripcion} ${p.marca}`.toLowerCase().includes(q));
+                if (filtrados.length === 0) return <div className="text-sm text-center py-4" style={{ color: C.dim }}>Sin resultados para «{buscaProd}».</div>;
+                return filtrados.slice(0, 200).map((p) => {
+                  const costo = costoNeto(p, descuentos);
+                  return (
+                    <button key={p.id} onClick={() => addProd(p)} className="w-full text-left rounded-xl border px-3 py-2 flex items-center gap-2" style={{ borderColor: C.borde, background: "#fff" }}>
+                      <div className="flex-1 min-w-0"><div className="font-semibold truncate text-sm" style={{ color: C.tinta }}>{p.descripcion}</div><div className="text-xs truncate" style={{ color: C.dim }}>{[p.codigo, p.marca, p.codigoDescuento && "dto " + p.codigoDescuento].filter(Boolean).join(" · ")}</div></div>
+                      <div className="text-right whitespace-nowrap">
+                        {costo != null ? <><div style={{ ...mono, color: "#1F7A55" }} className="text-sm font-semibold">{fMXN(costo)}</div><div style={{ ...mono, color: C.dim }} className="text-[10px]">costo</div></> : <span style={{ ...mono, color: C.tinta }} className="text-sm">{fMXN(p.precio || p.precioLista || 0)}</span>}
+                      </div>
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Análisis y pronóstico ────────────────────────────────────────── */
+function AnalisisSheet({ pipeline, onCerrar }) {
+  const activas = pipeline.filter((o) => !["facturado", "perdido"].includes(o.etapa));
+  const facturado = pipeline.filter((o) => o.etapa === "facturado");
+  const perdido = pipeline.filter((o) => o.etapa === "perdido");
+  const totActivo = activas.reduce((s, o) => s + (o.monto || 0), 0);
+  const totFacturado = facturado.reduce((s, o) => s + (o.monto || 0), 0);
+  const totPerdido = perdido.reduce((s, o) => s + (o.monto || 0), 0);
+  const pronostico = activas.reduce((s, o) => s + (o.monto || 0) * (PROB_ETAPA[o.etapa] || 0), 0);
+  const cerradas = facturado.length + perdido.length;
+  const winRate = cerradas ? Math.round((facturado.length / cerradas) * 100) : 0;
+  const embudo = ETAPAS.filter((e) => ["visita", "cotizado", "porcerrar", "oc", "pedido", "facturado"].includes(e.id))
+    .map((e) => { const ops = pipeline.filter((o) => o.etapa === e.id); return { ...e, n: ops.length, monto: ops.reduce((s, o) => s + (o.monto || 0), 0) }; });
+  const maxN = Math.max(1, ...embudo.map((e) => e.n));
+  const Tarjeta = ({ label, valor, sub, color }) => (
+    <div className="rounded-xl border p-3 flex-1" style={{ borderColor: C.borde, background: "#fff" }}>
+      <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}>{label}</div>
+      <div className="text-lg font-bold" style={{ ...mono, color: color || C.tinta }}>{valor}</div>
+      {sub ? <div className="text-xs" style={{ color: C.dim }}>{sub}</div> : null}
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.fondo, borderColor: C.borde }}>
+          <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold flex items-center gap-1.5"><BarChart3 size={16} /> Análisis y pronóstico</div>
+          <button onClick={onCerrar}><X size={20} style={{ color: C.dim }} /></button>
+        </div>
+        <div className="p-4 space-y-3 pb-8">
+          <div className="flex gap-2">
+            <Tarjeta label="Pipeline activo" valor={fMXN(totActivo)} sub={`${activas.length} oportunidad${activas.length === 1 ? "" : "es"}`} color={C.azul} />
+            <Tarjeta label="Pronóstico ponderado" valor={fMXN(pronostico)} sub="por probabilidad" color={C.ambar} />
+          </div>
+          <div className="flex gap-2">
+            <Tarjeta label="Ganado (facturado)" valor={fMXN(totFacturado)} sub={`${facturado.length} cierre${facturado.length === 1 ? "" : "s"}`} color={C.verde} />
+            <Tarjeta label="Tasa de cierre" valor={winRate + "%"} sub={`${facturado.length} de ${cerradas || 0} cerradas`} color={winRate >= 50 ? C.verde : C.rojo} />
+          </div>
+          {(() => {
+            const gan = pipeline.filter((o) => o.etapa === "facturado");
+            const vT = gan.reduce((s, o) => s + (o.monto || 0), 0);
+            const cT = gan.reduce((s, o) => s + (o.costo || 0), 0);
+            const conCosto = gan.filter((o) => o.costo != null && o.costo !== "");
+            const mT = vT - cT, pct = vT > 0 && cT > 0 ? Math.round(mT / vT * 100) : null;
+            return (
+              <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold mb-1" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}>Margen real (facturado)</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Venta</div><div className="text-sm font-semibold" style={mono}>{fMXN(vT)}</div></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Costo</div><div className="text-sm font-semibold" style={mono}>{fMXN(cT)}</div></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Margen</div><div className="text-sm font-semibold" style={{ ...mono, color: mT >= 0 ? "#1F7A55" : C.rojo }}>{fMXN(mT)}{pct != null ? ` · ${pct}%` : ""}</div></div>
+                </div>
+                {conCosto.length < gan.length ? <div className="text-[10px] mt-1" style={{ color: C.dim }}>Solo {conCosto.length} de {gan.length} facturadas tienen costo capturado.</div> : null}
+              </div>
+            );
+          })()}
+          {(() => {
+            const tR = pipeline.filter((o) => o.fechaCotizacion).map((o) => tiemposOpp(o).resp).filter((n) => n != null && n >= 0);
+            const prom = tR.length ? Math.round(tR.reduce((a, b) => a + b, 0) / tR.length) : null;
+            return (
+              <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}>Tiempo promedio a cotizar</div>
+                <div className="text-lg font-bold" style={{ ...mono, color: C.tinta }}>{prom != null ? fraseDias(prom) : "—"}</div>
+                <div className="text-xs" style={{ color: C.dim }}>{tR.length} cotización{tR.length === 1 ? "" : "es"} medida{tR.length === 1 ? "" : "s"}, desde que entró la oportunidad</div>
+              </div>
+            );
+          })()}
+          {(() => {
+            const conCosto = pipeline.filter((o) => o.costo != null && o.costo !== "" && (Number(o.monto) || 0) > 0);
+            if (!conCosto.length) return null;
+            const ventaTot = conCosto.reduce((s, o) => s + (Number(o.monto) || 0), 0);
+            const costoTot = conCosto.reduce((s, o) => s + (Number(o.costo) || 0), 0);
+            const margenTot = ventaTot - costoTot;
+            const pctTot = ventaTot > 0 ? Math.round((margenTot / ventaTot) * 100) : 0;
+            const porMarca = {};
+            conCosto.forEach((o) => { const m = (o.marca || "Sin marca").trim() || "Sin marca"; if (!porMarca[m]) porMarca[m] = { venta: 0, margen: 0 }; porMarca[m].venta += Number(o.monto) || 0; porMarca[m].margen += (Number(o.monto) || 0) - (Number(o.costo) || 0); });
+            const marcas = Object.entries(porMarca).sort((a, b) => b[1].margen - a[1].margen).slice(0, 6);
+            return (
+              <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}>Márgenes reales · {conCosto.length} tratos</div>
+                <div className="grid grid-cols-3 gap-2 text-center mb-2">
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Venta</div><div className="text-sm font-semibold" style={mono}>{fMXN(ventaTot)}</div></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Costo</div><div className="text-sm font-semibold" style={mono}>{fMXN(costoTot)}</div></div>
+                  <div><div className="text-[10px]" style={{ color: C.dim }}>Margen</div><div className="text-sm font-semibold" style={{ ...mono, color: "#1F7A55" }}>{fMXN(margenTot)} · {pctTot}%</div></div>
+                </div>
+                {marcas.map(([m, v]) => <div key={m} className="flex justify-between text-xs py-0.5" style={{ color: C.tinta }}><span className="truncate">{m}</span><span style={{ ...mono, color: "#1F7A55" }} className="ml-2 whitespace-nowrap">{fMXN(v.margen)} · {v.venta > 0 ? Math.round((v.margen / v.venta) * 100) : 0}%</span></div>)}
+              </div>
+            );
+          })()}
+          {/* Embudo */}
+          <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+            <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Embudo de conversión</div>
+            <div className="space-y-2">
+              {embudo.map((e) => (
+                <div key={e.id}>
+                  <div className="flex justify-between text-xs mb-0.5">
+                    <span style={{ color: C.tinta }}>{e.label}</span>
+                    <span style={{ ...mono, color: C.dim }}>{e.n} · {fMXN(e.monto)}</span>
+                  </div>
+                  <div className="h-3 rounded-full overflow-hidden" style={{ background: C.fondo }}>
+                    <div className="h-full rounded-full" style={{ width: `${Math.max(4, (e.n / maxN) * 100)}%`, background: e.color }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Ganado / Perdido */}
+          <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+            <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Ganado vs Perdido</div>
+            <div className="flex gap-3 text-sm">
+              <div className="flex-1">
+                <div style={{ color: C.verde }} className="font-semibold">Ganado: {facturado.length}</div>
+                <div style={{ ...mono, color: C.dim }} className="text-xs">{fMXN(totFacturado)}</div>
+              </div>
+              <div className="flex-1">
+                <div style={{ color: C.rojo }} className="font-semibold">Perdido: {perdido.length}</div>
+                <div style={{ ...mono, color: C.dim }} className="text-xs">{fMXN(totPerdido)}</div>
+              </div>
+            </div>
+          </div>
+          <div className="text-xs" style={{ color: C.dim }}>
+            El pronóstico pondera cada oportunidad activa por su probabilidad de cierre según la etapa (visita 10%, cotizado 30%, por cerrar 60%, OC 90%, pedido 95%). Es lo que puedes esperar cerrar con la cartera actual.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Tablero de Gerente (cartera del equipo, solo lectura) ────────── */
+function TableroGerente({ onCerrar }) {
+  const [datos, setDatos] = useState(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => { cargarEquipo().then(setDatos).catch(() => setErr(true)); }, []);
+  const Marco = ({ children }) => (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.fondo, borderColor: C.borde }}>
+          <div style={{ ...dsp, letterSpacing: "0.1em" }} className="uppercase font-semibold flex items-center gap-1.5"><Users size={16} /> Tablero de gerente</div>
+          <button onClick={onCerrar}><X size={20} style={{ color: C.dim }} /></button>
+        </div>
+        <div className="p-4 space-y-3 pb-8">{children}</div>
+      </div>
+    </div>
+  );
+  if (err) return <Marco><div className="text-sm text-center py-8" style={{ color: C.rojo }}>No se pudo cargar la cartera del equipo. Revisa tu conexión.</div></Marco>;
+  if (!datos) return <Marco><div className="text-sm text-center py-8" style={{ color: C.dim }}>Cargando cartera del equipo…</div></Marco>;
+
+  const opps = datos.opps || [];
+  const activas = opps.filter((o) => !["facturado", "perdido"].includes(o.etapa));
+  const facturado = opps.filter((o) => o.etapa === "facturado");
+  const totActivo = activas.reduce((s, o) => s + (o.monto || 0), 0);
+  const totFacturado = facturado.reduce((s, o) => s + (o.monto || 0), 0);
+  const pronostico = activas.reduce((s, o) => s + (o.monto || 0) * (PROB_ETAPA[o.etapa] || 0), 0);
+  const porVend = {};
+  opps.forEach((o) => {
+    const k = o.vendedorNombre || "Sin asignar";
+    if (!porVend[k]) porVend[k] = { nombre: k, activo: 0, ganado: 0, nActivas: 0, nGanadas: 0 };
+    if (o.etapa === "facturado") { porVend[k].ganado += o.monto || 0; porVend[k].nGanadas++; }
+    else if (o.etapa !== "perdido") { porVend[k].activo += o.monto || 0; porVend[k].nActivas++; }
+  });
+  const ranking = Object.values(porVend).sort((a, b) => (b.activo + b.ganado) - (a.activo + a.ganado));
+  const embudo = ETAPAS.filter((e) => ["visita", "cotizado", "porcerrar", "oc", "pedido", "facturado"].includes(e.id))
+    .map((e) => { const os = opps.filter((o) => o.etapa === e.id); return { ...e, n: os.length, monto: os.reduce((s, o) => s + (o.monto || 0), 0) }; });
+  const maxN = Math.max(1, ...embudo.map((e) => e.n));
+  const maxVend = Math.max(1, ...ranking.map((v) => v.activo + v.ganado));
+
+  return (
+    <Marco>
+      <div className="flex gap-2">
+        <div className="rounded-xl border p-3 flex-1" style={{ borderColor: C.borde, background: "#fff" }}>
+          <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim }}>Pipeline del equipo</div>
+          <div className="text-lg font-bold" style={{ ...mono, color: C.azul }}>{fMXN(totActivo)}</div>
+          <div className="text-xs" style={{ color: C.dim }}>{activas.length} activas · {ranking.length} vendedor{ranking.length === 1 ? "" : "es"}</div>
+        </div>
+        <div className="rounded-xl border p-3 flex-1" style={{ borderColor: C.borde, background: "#fff" }}>
+          <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim }}>Pronóstico</div>
+          <div className="text-lg font-bold" style={{ ...mono, color: C.ambar }}>{fMXN(pronostico)}</div>
+          <div className="text-xs" style={{ color: C.dim }}>Facturado: {fMXN(totFacturado)}</div>
+        </div>
+      </div>
+      <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+        <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Ranking de vendedores</div>
+        <div className="space-y-2">
+          {ranking.map((v, i) => (
+            <div key={v.nombre}>
+              <div className="flex justify-between text-sm mb-0.5">
+                <span style={{ color: C.tinta }} className="font-semibold truncate">{i + 1}. {v.nombre}</span>
+                <span style={{ ...mono, color: C.dim }}>{fMXN(v.activo + v.ganado)}</span>
+              </div>
+              <div className="h-3 rounded-full overflow-hidden flex" style={{ background: C.fondo }}>
+                <div className="h-full" style={{ width: `${(v.activo / maxVend) * 100}%`, background: C.azul }} />
+                <div className="h-full" style={{ width: `${(v.ganado / maxVend) * 100}%`, background: C.verde }} />
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: C.dim }}>Activo {fMXN(v.activo)} ({v.nActivas}) · Ganado {fMXN(v.ganado)} ({v.nGanadas})</div>
+            </div>
+          ))}
+          {ranking.length === 0 ? <div className="text-xs" style={{ color: C.dim }}>Sin oportunidades en el equipo todavía.</div> : null}
+        </div>
+      </div>
+      <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: "#fff" }}>
+        <div className="text-xs uppercase font-semibold mb-2" style={{ ...dsp, color: C.dim, letterSpacing: "0.1em" }}>Embudo del equipo</div>
+        <div className="space-y-2">
+          {embudo.map((e) => (
+            <div key={e.id}>
+              <div className="flex justify-between text-xs mb-0.5"><span style={{ color: C.tinta }}>{e.label}</span><span style={{ ...mono, color: C.dim }}>{e.n} · {fMXN(e.monto)}</span></div>
+              <div className="h-3 rounded-full overflow-hidden" style={{ background: C.fondo }}><div className="h-full rounded-full" style={{ width: `${Math.max(4, (e.n / maxN) * 100)}%`, background: e.color }} /></div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="text-xs" style={{ color: C.dim }}>Vista de solo lectura de la cartera de todo el equipo (barras: azul = activo, verde = ganado). Cada vendedor edita la suya desde su sesión.</div>
+    </Marco>
+  );
+}
+
+/* ── Importar oportunidades desde Excel de Monday ─────────────────── */
+function ImportarSheet({ pipeline, tc, onImportar, onCerrar }) {
+  const [res, setRes] = useState(null);
+  const [error, setError] = useState("");
+  const [cargando, setCargando] = useState(false);
+  const [excl, setExcl] = useState({});
+  const [nombre, setNombre] = useState("");
+  const [verDup, setVerDup] = useState(false);
+  const onArchivo = async (ev) => {
+    const f = ev.target.files && ev.target.files[0]; ev.target.value = "";
+    if (!f) return;
+    setNombre(f.name); setError(""); setRes(null); setCargando(true);
+    try {
+      const buf = await f.arrayBuffer();
+      const hojas = leerXLSX(buf);
+      const r = mapearMonday(hojas, pipeline, tc);
+      if (r.error) { setError(r.error); setCargando(false); return; }
+      setRes(r); setExcl({}); setCargando(false);
+    } catch (e) { setError("No pude leer el archivo. Asegúrate de que sea un .xlsx exportado de Monday."); setCargando(false); }
+  };
+  const sel = res ? res.nuevas.filter((_, i) => !excl[i]) : [];
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,20,25,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><FileUp size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Importar oportunidades</span></span>
+          <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
+        </div>
+        <div className="p-4 pb-8 space-y-3">
+          <div className="text-xs" style={{ color: C.dim }}>Sube el Excel (.xlsx) que descargaste de tu tablero de Monday. Tomo cliente, título, monto (pesos o dólares), vendedor, cotización, OC, sucursal y notas. Las que ya tienes en tu pipeline (mismo folio de Monday o de cotización) se omiten automáticamente.</div>
+          <label className="w-full rounded-xl border border-dashed px-3 py-5 flex flex-col items-center justify-center gap-2 text-sm font-semibold" style={{ borderColor: C.ambar, color: C.tinta, background: C.panel, cursor: "pointer" }}>
+            <FileSpreadsheet size={22} style={{ color: C.ambar }} />
+            {cargando ? "Leyendo…" : nombre ? "Elegir otro archivo" : "Elegir archivo .xlsx de Monday"}
+            <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onArchivo} className="hidden" />
+          </label>
+          {nombre && !error ? <div className="text-xs" style={{ ...mono, color: C.dim }}>{nombre}</div> : null}
+          {error ? <div className="rounded-lg border p-3 text-xs" style={{ borderColor: C.rojo, background: C.rojoBg, color: "#8B2E2E" }}>{error}</div> : null}
+          {res ? (<>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border p-3 text-center" style={{ borderColor: C.ambar, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.ambar, letterSpacing: "0.06em" }}>Nuevas</div>
+                <div className="text-2xl font-semibold" style={mono}>{res.nuevas.length}</div>
+              </div>
+              <div className="rounded-xl border p-3 text-center" style={{ borderColor: C.borde, background: "#fff" }}>
+                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.06em" }}>Ya existen</div>
+                <div className="text-2xl font-semibold" style={{ ...mono, color: C.dim }}>{res.duplicadas.length}</div>
+              </div>
+            </div>
+            {res.nuevas.length === 0 ? (
+              <Vacio>No hay oportunidades nuevas que importar; todas las del archivo ya están en tu pipeline.</Vacio>
+            ) : (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Sec>Se importarán · {sel.length}</Sec>
+                  <button onClick={() => setExcl(Object.fromEntries(res.nuevas.map((_, i) => [i, sel.length > 0])))} className="text-xs font-semibold" style={{ color: C.azul }}>{sel.length > 0 ? "Quitar todas" : "Marcar todas"}</button>
+                </div>
+                <div className="space-y-1.5">
+                  {res.nuevas.map((o, i) => (
+                    <label key={i} className="flex items-start gap-2 rounded-lg border p-2 cursor-pointer" style={{ borderColor: C.borde, background: C.panel }}>
+                      <input type="checkbox" checked={!excl[i]} onChange={() => setExcl((x) => ({ ...x, [i]: !x[i] }))} className="mt-0.5" style={{ accentColor: C.ambar }} />
+                      <span className="min-w-0 flex-1">
+                        <span className="text-sm font-semibold block truncate">{o.cliente}</span>
+                        {o.titulo ? <span className="text-xs block truncate" style={{ color: C.dim }}>{o.titulo}</span> : null}
+                        <span className="text-xs" style={{ ...mono, color: C.dim }}>{o.monto != null ? fMXN(o.monto) : "sin monto"}{o.moneda === "USD" && o.montoOrig ? ` · US$${o.montoOrig}` : ""}{o.vendedor ? ` · ${o.vendedor}` : ""}{o.numCotizacion ? ` · ${o.numCotizacion}` : ""}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            {res.duplicadas.length > 0 ? (
+              <div>
+                <button onClick={() => setVerDup((v) => !v)} className="text-xs font-semibold flex items-center gap-1" style={{ color: C.dim }}>
+                  <ChevronDown size={13} style={{ transform: verDup ? "rotate(180deg)" : "none" }} /> {verDup ? "Ocultar" : "Ver"} las {res.duplicadas.length} que se omiten
+                </button>
+                {verDup ? <div className="mt-1 space-y-1">{res.duplicadas.map((o, i) => <div key={i} className="text-xs px-2 py-1 rounded" style={{ background: "#fff", color: C.dim, border: `1px solid ${C.borde}` }}>{o.cliente}{o.numCotizacion ? ` · ${o.numCotizacion}` : ""}</div>)}</div> : null}
+              </div>
+            ) : null}
+            {res.nuevas.length > 0 ? (
+              <button onClick={() => onImportar(sel)} disabled={sel.length === 0} className="w-full py-3 rounded-xl font-semibold" style={{ background: sel.length ? C.ambar : C.borde, color: "#fff" }}>
+                Importar {sel.length} {sel.length === 1 ? "oportunidad" : "oportunidades"}
+              </button>
+            ) : null}
+          </>) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Asistente IA para la cartera (usa tu clave de Claude) ────────── */
+function AsistenteIASheet({ data, onCerrar }) {
+  const [clave, setClave] = useState(() => { try { return localStorage.getItem("brida-apikey") || ""; } catch { return ""; } });
+  const [pregunta, setPregunta] = useState("");
+  const [resp, setResp] = useState("");
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState("");
+  const guardarClave = (v) => { setClave(v); try { localStorage.setItem("brida-apikey", v); } catch (e) {} };
+  const preguntar = async (q) => {
+    const p = (q || pregunta).trim();
+    if (!p || !clave.trim() || cargando) return;
+    setCargando(true); setError(""); setResp(""); if (q) setPregunta(q);
+    try { setResp(await analizarIA(contextoCartera(data), p, clave.trim())); }
+    catch (e) { setError(String((e && e.message) || e)); }
+    setCargando(false);
+  };
+  const presets = [
+    "¿Qué oportunidades debo priorizar hoy y por qué?",
+    "¿Cuáles están estancadas o con acción vencida?",
+    "Dame un resumen ejecutivo de mi cartera.",
+    "Ideas concretas para cerrar las de mayor monto.",
+  ];
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><Zap size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Asistente</span> <span style={{ color: C.ambar }}>IA</span></span>
+          <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
+        </div>
+        <div className="p-4 pb-8 space-y-3">
+          {!clave.trim() ? (
+            <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: C.ambar, background: C.ambarBg }}>
+              <div className="text-xs" style={{ color: C.tinta }}>Para usar el Asistente IA, pega tu clave de <b>console.anthropic.com</b>. Se guarda solo en este dispositivo y nunca viaja en los respaldos. El costo es de centavos por consulta (usa Claude Haiku).</div>
+              <input value={clave} onChange={(e) => guardarClave(e.target.value)} placeholder="sk-ant-..." className="w-full rounded-lg px-3 py-2 text-sm" style={{ ...inp, ...mono }} />
+            </div>
+          ) : null}
+          <div className="text-xs" style={{ color: C.dim }}>Analizo tu cartera activa (clientes, etapas, montos, acciones y vencimientos) y te doy recomendaciones. Elige una pregunta o escribe la tuya:</div>
+          <div className="grid grid-cols-1 gap-1.5">
+            {presets.map((p) => (
+              <button key={p} onClick={() => preguntar(p)} disabled={!clave.trim() || cargando} className="text-left text-sm px-3 py-2 rounded-lg border" style={{ borderColor: C.borde, background: "#fff", color: clave.trim() ? C.tinta : C.dim }}>{p}</button>
+            ))}
+          </div>
+          <div className="flex gap-1.5">
+            <input value={pregunta} onChange={(e) => setPregunta(e.target.value)} onKeyDown={(e) => e.key === "Enter" && preguntar()} placeholder="Escribe tu pregunta…" className="flex-1 rounded-lg px-3 py-2 text-sm" style={inp} />
+            <button onClick={() => preguntar()} disabled={!pregunta.trim() || !clave.trim() || cargando} className="px-4 rounded-lg font-semibold text-sm" style={{ background: pregunta.trim() && clave.trim() ? C.ambar : C.borde, color: "#fff" }}>{cargando ? "…" : "Preguntar"}</button>
+          </div>
+          {cargando ? <div className="text-sm text-center py-4" style={{ color: C.dim }}>Analizando tu cartera…</div> : null}
+          {error ? <div className="rounded-lg border p-3 text-xs" style={{ borderColor: C.rojo, background: C.rojoBg, color: "#8B2E2E" }}>Error: {error}. Revisa tu clave o tu conexión.</div> : null}
+          {resp ? (
+            <div className="rounded-xl border p-3 text-sm" style={{ borderColor: C.borde, background: "#fff", color: C.tinta, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{resp}</div>
+          ) : null}
+          <div className="text-xs" style={{ color: "#9AA7B4" }}>La IA orienta, pero la decisión es tuya. Revisa siempre sus sugerencias contra lo que sabes del cliente.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Reasignación de facturas (gerente / admin) ───────────────────── */
+function ReasignacionSheet({ pipeline, equipo, onActualizar, onCerrar }) {
+  const nom = (id) => (equipo.find((m) => m.id === id) || {}).nombre || "";
+  const lineas = [];
+  (pipeline || []).forEach((o) => (o.facturas || []).forEach((f) => lineas.push({ o, f })));
+  const [marcadas, setMarcadas] = useState(() => { const s = {}; lineas.forEach(({ o, f }) => { s[o.id + "::" + f.id] = !!f.reasignada; }); return s; });
+  const [oppEdits, setOppEdits] = useState(() => { const m = {}; (pipeline || []).forEach((o) => { if ((o.facturas || []).length) m[o.id] = { zonaReasignar: o.zonaReasignar || "", numCliente: o.numCliente || "" }; }); return m; });
+  const [verTodas, setVerTodas] = useState(false);
+  const k = (o, f) => o.id + "::" + f.id;
+  const sinReasignar = lineas.filter(({ o, f }) => !marcadas[k(o, f)]);
+  const totalFact = lineas.reduce((s, { f }) => s + (Number(f.monto) || 0), 0);
+  const totalSin = sinReasignar.reduce((s, { f }) => s + (Number(f.monto) || 0), 0);
+  const sinFacturar = (pipeline || []).filter((o) => ["oc", "pedido", "facturado"].includes(o.etapa) && (o.facturas || []).length === 0);
+  const mostrar = verTodas ? lineas : sinReasignar;
+  const setOpp = (id, key, v) => setOppEdits((m) => ({ ...m, [id]: { ...m[id], [key]: v } }));
+  const toggle = (o, f) => setMarcadas((m) => ({ ...m, [k(o, f)]: !m[k(o, f)] }));
+  const guardar = () => {
+    const cambios = {};
+    const asegura = (o) => { if (!cambios[o.id]) cambios[o.id] = { ...o, facturas: (o.facturas || []).map((x) => ({ ...x })) }; return cambios[o.id]; };
+    lineas.forEach(({ o, f }) => { const r = !!marcadas[k(o, f)]; if (r !== !!f.reasignada) { const fx = asegura(o).facturas.find((x) => x.id === f.id); if (fx) fx.reasignada = r; } });
+    Object.entries(oppEdits).forEach(([id, e]) => { const o = (pipeline || []).find((x) => x.id === id); if (!o) return; if ((e.zonaReasignar || "") !== (o.zonaReasignar || "") || (e.numCliente || "") !== (o.numCliente || "")) { const c = asegura(o); c.zonaReasignar = e.zonaReasignar || ""; c.numCliente = e.numCliente || ""; } });
+    if (Object.keys(cambios).length) onActualizar(Object.values(cambios));
+  };
+  const exportar = () => {
+    const header = ["COTIZACIÓN", "PEDIDO", "FACTURA", "FECHA FACTURA", "CLIENTE", "# DE CLIENTE", "ZONA A REASIGNAR", "COTIZADOR A&C", "VENDEDOR DE CAMPO INVOLUCRADO", "VENDEDOR A&C INVOLUCRADO", "MONTO SIN IVA"];
+    const filas = [header, ...mostrar.map(({ o, f }) => { const e = oppEdits[o.id] || {}; return [o.numCotizacion || "", f.pedido || "", f.factura || "", f.fechaFactura || "", o.cliente || "", e.numCliente || o.numCliente || "", e.zonaReasignar || o.zonaReasignar || "", nom(o.cotizadorId), o.origen || o.vendedor || "", nom(o.traidoPorId || o.vendedorId), Number(f.monto) || ""]; })];
+    exportarXLSX(`Reasignacion_Facturas_${hoy()}.xlsx`, "REASIGNACIONES", filas, ["text", "text", "text", "text", "text", "text", "text", "text", "text", "text", "money"]);
+  };
+  const Tar = ({ label, valor, sub, color, bg }) => (
+    <div className="rounded-xl border p-2.5 text-center" style={{ borderColor: color, background: bg || "#fff" }}>
+      <div className="text-[10px] uppercase font-semibold" style={{ ...dsp, color, letterSpacing: "0.05em" }}>{label}</div>
+      <div className="text-base font-semibold" style={{ ...mono, color: C.tinta }}>{valor}</div>
+      {sub ? <div className="text-[10px]" style={{ color: C.dim }}>{sub}</div> : null}
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><FileSpreadsheet size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Control de facturación</span></span>
+          <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
+        </div>
+        <div className="p-4 pb-8 space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <Tar label="Sin reasignar" valor={sinReasignar.length} sub={fMXN(totalSin)} color={sinReasignar.length ? C.rojo : C.verde} bg={sinReasignar.length ? C.rojoBg : "#fff"} />
+            <Tar label="Facturado" valor={lineas.length} sub={fMXN(totalFact)} color={C.azul} />
+            <Tar label="Sin facturar" valor={sinFacturar.length} sub="ganadas" color={sinFacturar.length ? C.ambar : C.verde} />
+          </div>
+          {sinFacturar.length ? <div className="text-xs rounded-lg border px-3 py-2" style={{ borderColor: C.ambar, background: C.ambarBg, color: "#8A5A00" }}>Hay {sinFacturar.length} oportunidad(es) ganada(s) sin factura registrada: {sinFacturar.slice(0, 4).map((o) => o.cliente).join(", ")}{sinFacturar.length > 4 ? "…" : ""}. Agrégalas desde su ficha.</div> : null}
+          <div className="flex items-center justify-between">
+            <div className="text-xs" style={{ color: C.dim }}>{verTodas ? "Todas las facturas" : "Facturas por reasignar"} · {mostrar.length}</div>
+            <button onClick={() => setVerTodas((v) => !v)} className="text-xs font-semibold" style={{ color: C.azul }}>{verTodas ? "Ver solo pendientes" : "Ver todas"}</button>
+          </div>
+          {lineas.length === 0 ? <Vacio>Aún no hay facturas registradas. Ábre una oportunidad y agrégalas en «Facturación».</Vacio> : mostrar.length === 0 ? <div className="rounded-lg border px-3 py-4 text-sm text-center" style={{ borderColor: C.verde, background: C.verdeBg, color: "#1F7A55" }}>✓ Todas las facturas están reasignadas.</div> : (
+            <div className="space-y-2">
+              {mostrar.map(({ o, f }) => {
+                const e = oppEdits[o.id] || {};
+                const r = !!marcadas[k(o, f)];
+                return (
+                  <div key={k(o, f)} className="rounded-xl border p-3 space-y-2" style={{ borderColor: r ? C.verde : C.borde, background: r ? C.verdeBg : C.panel }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold truncate">{o.cliente}</div>
+                        <div className="text-xs" style={{ ...mono, color: C.dim }}>{[f.factura && "F: " + f.factura, f.pedido && "P: " + f.pedido, o.numCotizacion && "C: " + o.numCotizacion, f.fechaFactura].filter(Boolean).join(" · ")}</div>
+                      </div>
+                      <div className="text-sm font-semibold shrink-0" style={mono}>{fMXN(Number(f.monto) || 0)}</div>
+                    </div>
+                    <div className="text-xs" style={{ color: C.azul }}>{[nom(o.traidoPorId || o.vendedorId) && "A&C: " + nom(o.traidoPorId || o.vendedorId), nom(o.cotizadorId) && "Cotizó: " + nom(o.cotizadorId), (o.origen || o.vendedor) && "Campo: " + (o.origen || o.vendedor)].filter(Boolean).join(" · ") || "—"}</div>
+                    <input value={e.zonaReasignar || ""} onChange={(ev) => setOpp(o.id, "zonaReasignar", ev.target.value)} placeholder="Zona a reasignar (ej. AUTOMATIZACIÓN Y CONTROL LEÓN)" className="w-full rounded-lg px-3 py-2 text-sm" style={inp} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={e.numCliente || ""} onChange={(ev) => setOpp(o.id, "numCliente", ev.target.value)} placeholder="# de cliente" className="rounded-lg px-3 py-2 text-sm" style={inp} />
+                      <button onClick={() => toggle(o, f)} className="rounded-lg px-3 py-2 text-sm font-semibold flex items-center justify-center gap-1.5 border" style={{ borderColor: r ? C.verde : C.borde, color: r ? "#1F7A55" : C.dim, background: "#fff" }}>
+                        <span className="w-4 h-4 rounded border flex items-center justify-center" style={{ borderColor: r ? C.verde : C.borde, background: r ? C.verde : "#fff" }}>{r ? <Check size={11} style={{ color: "#fff" }} /> : null}</span>
+                        Reasignada
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {lineas.length > 0 ? (
+            <div className="flex gap-2 pt-1">
+              <button onClick={guardar} className="flex-1 py-2.5 rounded-xl border font-semibold text-sm" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}>Guardar cambios</button>
+              <button onClick={exportar} className="flex-1 py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2" style={{ background: C.ambar, color: "#fff" }}><FileSpreadsheet size={15} /> Exportar {verTodas ? "todas" : "pendientes"}</button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/* ── Compras y entregas (Fase 3 · ERP) ────────────────────────────── */
+function ComprasSheet({ pipeline, onCerrar }) {
+  const H = hoy();
+  const lineas = [];
+  (pipeline || []).forEach((o) => (o.compras || []).forEach((c) => lineas.push({ o, c })));
+  const [verTodas, setVerTodas] = useState(false);
+  const pendientes = lineas.filter(({ c }) => c.estado !== "recibido");
+  const vencidas = pendientes.filter(({ c }) => c.entrega && c.entrega < H);
+  const recibidas = lineas.filter(({ c }) => c.estado === "recibido");
+  const mostrar = (verTodas ? lineas : pendientes).slice().sort((a, b) => (a.c.entrega || "9999").localeCompare(b.c.entrega || "9999"));
+  const EST = { pendiente: { l: "Pendiente", col: C.ambar, bg: C.ambarBg }, transito: { l: "En tránsito", col: C.azul, bg: C.azulBg }, recibido: { l: "Recibido", col: C.verde, bg: C.verdeBg } };
+  const Tar = ({ label, valor, color, bg }) => (
+    <div className="rounded-xl border p-2.5 text-center" style={{ borderColor: color, background: bg || "#fff" }}>
+      <div className="text-[10px] uppercase font-semibold" style={{ ...dsp, color, letterSpacing: "0.05em" }}>{label}</div>
+      <div className="text-lg font-semibold" style={{ ...mono, color: C.tinta }}>{valor}</div>
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><Package size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Compras y entregas</span></span>
+          <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
+        </div>
+        <div className="p-4 pb-8 space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <Tar label="Por entregar" valor={pendientes.length} color={C.azul} />
+            <Tar label="Vencidas" valor={vencidas.length} color={vencidas.length ? C.rojo : C.verde} bg={vencidas.length ? C.rojoBg : "#fff"} />
+            <Tar label="Recibidas" valor={recibidas.length} color={C.verde} />
+          </div>
+          {vencidas.length ? <div className="text-xs rounded-lg border px-3 py-2" style={{ borderColor: C.rojo, background: C.rojoBg, color: "#8B2E2E" }}>{vencidas.length} orden(es) pasaron su fecha de entrega. Dale seguimiento al proveedor.</div> : null}
+          <div className="flex items-center justify-between">
+            <div className="text-xs" style={{ color: C.dim }}>{verTodas ? "Todas las órdenes" : "Por entregar"} · {mostrar.length}</div>
+            <button onClick={() => setVerTodas((v) => !v)} className="text-xs font-semibold" style={{ color: C.azul }}>{verTodas ? "Ver solo pendientes" : "Ver todas"}</button>
+          </div>
+          {lineas.length === 0 ? <Vacio>Sin órdenes de compra. Agrégalas en cada oportunidad, sección «Compras a proveedor».</Vacio> : mostrar.length === 0 ? <div className="rounded-lg border px-3 py-4 text-sm text-center" style={{ borderColor: C.verde, background: C.verdeBg, color: "#1F7A55" }}>✓ Todo entregado.</div> : (
+            <div className="space-y-2">
+              {mostrar.map(({ o, c }) => {
+                const e = EST[c.estado] || EST.pendiente;
+                const dias = c.entrega ? diasEntre(H, c.entrega) : null;
+                const venc = c.estado !== "recibido" && c.entrega && c.entrega < H;
+                return (
+                  <div key={o.id + c.id} className="rounded-xl border p-3 space-y-1" style={{ borderColor: venc ? C.rojo : C.borde, background: venc ? C.rojoBg : C.panel }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold truncate">{c.proveedor || "Proveedor"}{c.numOC ? ` · ${c.numOC}` : ""}</div>
+                        <div className="text-xs truncate" style={{ color: C.dim }}>{o.cliente}{o.titulo ? " · " + o.titulo : ""}</div>
+                      </div>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold shrink-0" style={{ background: e.bg, color: e.col }}>{e.l}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs" style={{ ...mono, color: venc ? "#8B2E2E" : C.dim }}>
+                      <span>{c.entrega ? `Entrega: ${c.entrega}${c.estado !== "recibido" && dias != null ? (dias < 0 ? ` (vencida ${-dias}d)` : dias === 0 ? " (hoy)" : ` (en ${dias}d)`) : ""}` : "Sin fecha de entrega"}</span>
+                      {c.monto ? <span>{fMXN(Number(c.monto))}</span> : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Manual didáctico ─────────────────────────────────────────────── */
 const MANUAL = [
   { id: "inicio", t: "Primeros pasos", c: [
     "Cada vez que abres la app, la pantalla de inicio te recibe con la fecha completa, tus pendientes del día —vencidos en rojo— como notificaciones, un panel con el total cotizado, y el tipo de cambio USD→MXN (edítalo a mano o toca Actualizar para traerlo automático con internet). Toca cualquiera para entrar directo, o usa Entrar al tablero.",
-    "El Centro de Control vive instalado en tu teléfono o PC y guarda todo localmente: funciona sin internet y nada viaja a servidores.",
+    "El Brida vive instalado en tu teléfono o PC y guarda todo localmente: funciona sin internet y nada viaja a servidores.",
     "Instalación: abre la dirección de la app en Chrome o Samsung Internet → menú ⋮ → Instalar aplicación.",
     "Actualizaciones: sube el nuevo index.html a tu repositorio de GitHub con el mismo nombre, cierra la app y ábrela con internet. Tus datos no se tocan.",
     "Respaldo: en Cierre → Respaldo de datos, exporta un .json de vez en cuando (y siempre antes de actualizar).",
@@ -863,7 +2152,7 @@ const MANUAL = [
     "Los tres indicadores son lecturas en vivo, como un panel HMI: tiempo registrado hoy (rojo parpadeando si el cronómetro corre), pendientes de hoy + vencidos, y el total cotizado del pipeline (lo que tienes en la calle esperando respuesta). Tócalos para saltar a su pestaña.",
     "El punto cambia de color según el estado: verde = en orden, ámbar = requiere atención, rojo = hay vencidos.",
     "Nube (☁️) = Cuenta y sincronización. Ubicación (📍) = Visitas y check-in. Micrófono = Asistente por voz. Signo de interrogación = este manual.",
-    "Toca el nombre Centro de Control para volver a la pantalla de inicio con tu resumen del día en cualquier momento.",
+    "Toca el nombre Brida para volver a la pantalla de inicio con tu resumen del día en cualquier momento.",
   ]},
   { id: "hoy", t: "Hoy — pendientes", c: [
     "Captura rápida: escribe el pendiente, elige Hoy / Mañana / Otra fecha, opcionalmente una hora, y toca +.",
@@ -880,19 +2169,16 @@ const MANUAL = [
     "Las barras muestran tu día por categoría y tu semana por día (la barra ámbar es hoy). En Registros recientes ves los últimos movimientos de cualquier día y puedes eliminar cualquiera con la X, incluidos los de días anteriores.",
   ]},
   { id: "pipeline", t: "Pipeline", c: [
-    "Flujo: Acuerdo de visita → Cotizado → Por cerrar → OC recibida → Pedido realizado → Facturado (o Perdido). Recibir la OC ya significa que la venta se ganó.",
+    "Flujo: Oportunidad entrante → Cotizado → Por cerrar → OC recibida → Pedido realizado → Facturado (o Perdido). Recibir la OC ya significa que la venta se ganó.",
     "Regla de oro: toda oportunidad activa debe tener próxima acción con fecha. La app te lo recuerda con la franja ámbar y en el cierre del día.",
-    "Activas son las que aún persigues: Acuerdo de visita, Cotizado y Por cerrar. Al recibir la OC dejan de ser activas porque ya se ganaron.",
+    "Activas son las que aún persigues: Oportunidad entrante, Cotizado y Por cerrar. Al recibir la OC dejan de ser activas porque ya se ganaron.",
     "Tarjeta: toca para editar (cliente, monto, margen, marca, plaza, vendedor y los números de referencia); Avanzar la pasa a la siguiente etapa; Agendar manda la próxima acción a Google Calendar.",
-    "Duplicar oportunidad: dentro de una oportunidad ya guardada, el botón Duplicar crea una copia con los mismos datos (con «(copia)» en el título) y abre el editor en ella para que cambies solo lo que sea distinto. Los cambios sin guardar no se copian: guarda antes de duplicar.",
-    "El resumen muestra tres cifras: En juego (visita, cotizado y por cerrar), Pedido (OC y pedido) y Facturado (cobrado). Al elegir un mes en Acumulado por mes ves cuatro cifras de ese mes: Cotizado (por fecha de cotización, con el número de cotizaciones), Pedido, Facturado y Movimientos.",
+    "El resumen muestra tres cifras: En juego (visita, cotizado y por cerrar), Pedido (OC y pedido) y Facturado (cobrado). El Acumulado por mes agrupa usando las fechas de OC, pedido y factura.",
     "Desde Cotizado aparecen N° y fecha de cotización; desde OC recibida, la OC del cliente con su fecha; desde Pedido, N° y fecha de pedido y de factura. Todo se muestra como etiquetas y sale en el CSV de Monday.",
     "Margen: captura el porcentaje con que vendiste; se muestra en la tarjeta y alimenta el cálculo de comisiones.",
     "Moneda: en cada oportunidad puedes capturar el monto en pesos o en dólares con el switch MXN/USD. Si eliges USD, se convierte y se guarda en pesos usando el tipo de cambio de la pantalla de inicio; la tarjeta muestra el monto original en dólares.",
     "Comisiones: el botón Calcular comisiones toma una oportunidad ya facturada, su monto y margen, y con tu porcentaje calcula utilidad y tu pago.",
     "Pedir estatus a vendedores: el botón agrupa tus oportunidades en curso por vendedor y arma un mensaje claro y numerado (cliente, monto, etapa, referencias y un renglón Estatus para llenar). Elige cuáles incluir y envíalo por WhatsApp, Compartir o Copiar. También puedes pedir el estatus de una sola oportunidad desde su ficha.",
-    "Importar de Monday: el botón «Importar de Monday (Excel)» lee el .xlsx que descargas de tu tablero y crea oportunidades tomando cliente, título, monto (pesos o dólares), vendedor, cotización, OC, sucursal y notas. Compara con lo que ya tienes (por folio de Monday o número de cotización) y omite las repetidas; revisas la lista y marcas cuáles importar antes de confirmar.",
-    "Importar pipeline (Excel): en Cierre, el botón «Importar pipeline (Excel)» hace lo inverso a exportar: lee el .xlsx que esta app genera en «Pipeline en Excel» y reconstruye las oportunidades con todos sus datos (etapa, montos, folios y fechas, comisión, vendedor, marca, plaza y notas). Sirve para restaurar o mover tu pipeline; las que ya tienes no se duplican.",
     "Cuando cobres, avanza la oportunidad a Facturado. Las fechas de OC, pedido y factura se sellan solas al avanzar de etapa (y puedes editarlas).",
     "El buscador encuentra por cliente, vendedor, marca, plaza y por número de cotización, OC, pedido o factura. Los chips filtran por etapa (Todas al inicio, vista por defecto). Las tarjetas se ordenan por etapa y, dentro de cada etapa, de mayor a menor monto.",
   ]},
@@ -938,9 +2224,21 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
-    "v3.7 — En Cierre ahora puedes importar el propio Excel del pipeline (lo inverso a exportarlo): reconstruye las oportunidades con todos sus datos, ideal para restaurar o mover tu pipeline. No duplica lo que ya tienes.",
+    "v5.0.0 — Brida ahora es ERP + CRM. Fase 2: costo y margen real por trato (venta − costo), con márgenes por marca en Análisis. Fase 3: compras a proveedores — registra las OC a Schneider/Siemens con tiempos de entrega, y un tablero «Compras y entregas» con pendientes, en tránsito y entregas atrasadas.",
+    "v4.9.0 — Pedidos y facturas multi-línea (Fase 1 del ERP): cada oportunidad puede tener varios pedidos y varias facturas (# pedido, # factura, fecha, monto sin IVA, facturista, estado y marca de reasignada). Nuevo tablero «Control de facturación» con facturas sin reasignar, sin facturar y total facturado; la reasignación ahora exporta UNA fila por factura, así ninguna se escapa.",
+    "v4.8.0 — Listas de precios por marca: al importar indicas la marca y la versión (ej. Schneider · 06 Abr 2026); re-subir actualiza precios. El catálogo muestra las listas cargadas por marca. La carátula queda guardada para todo el equipo (solo la re-subes para actualizar). En la lista de clientes, el fondo de la tarjeta cambia de color según su clasificación (clave, recurrente, pide y no cierra).",
+    "v4.7.0 — Margen en la cotización: al elegir del catálogo ahora ves el costo neto, agregas con buscador y juegas con el margen (markup) — el precio se recalcula solo. Importador de precios afinado al formato Schneider (Catálogo, Descripción, Precio de Lista, Código Descuento).",
+    "v4.6.0 — Listas de precios con descuentos en el catálogo: importa tu carátula (código de descuento → factor) y tu lista de precios desde Excel. Cada producto guarda precio de lista y código de descuento, y el catálogo calcula solo el costo neto (precio de lista × factor).",
+    "v4.5.0 — Reasignación de facturas (gerente/admin): lista tus facturadas, completas zona, # de cliente y monto sin IVA, y exportas el Excel en el formato de reasignación al departamento (cotización, pedido, factura, cotizador y vendedores se toman solos).",
+    "v4.4.0 — Tablero de equipo compartido: vendedor, cotizador y gerente ven el mismo pipeline (un registro por trato, sin duplicar montos). Cada oportunidad guarda quién la trajo, quién la cotiza y su origen (sucursal / vendedor de campo / directo). Nuevo filtro «Todas / Las que traje / Las que cotizo» y rol de Cotizador. Lo personal (tareas, tiempo, metas) sigue siendo privado.",
+    "v4.3.2 — Se agregó el sector OEM (Fabricante de Equipo Original) a los tipos de cliente.",
+    "v4.3.1 — Sectores de cliente de Elektron (comerciante, contratista eléctrico, industria, integradores, gobierno, etc.) para clasificar mejor a cada cuenta.",
+    "v4.3.0 — Cuentas clave y clasificación de clientes: marca manual de cuenta clave e Integrador Alliance, detección automática por historial (3+ ganadas), aviso de prioridad al abrir una oportunidad, y colores en el pipeline (dorado clave, verde recurrente, negro «pide y no cierra»).",
+    "v4.2.0 — Tiempos de cotización: fecha de oportunidad entrante y cálculo del tiempo de respuesta (entrante → cotización) y ciclo total, con foco en rojo para clientes con +24 h sin cotizar. Se renombró «acuerdo de visita» a «oportunidad entrante».",
+    "v4.1.0 — Recordatorios por correo: un aviso diario con lo vencido, por vencer (3 días), sin cotizar (+24 h) y el cierre de mes.",
+    "v4.0 — Brida CRM: Clientes y contactos, oportunidades ligadas a cliente, bitácora de actividades y seguimiento, cotizaciones con catálogo y PDF/Excel en formato Elektron, análisis y pronóstico, tableros de gerente con roles, y diseño para computadora (barra lateral en pantalla grande).",
     "v3.6 — Nuevo importador: sube el Excel exportado de Monday y crea las oportunidades automáticamente (cliente, título, monto en pesos o dólares, vendedor, cotización, OC, sucursal y notas). Detecta y omite las que ya tienes para no duplicarlas.",
-    "v3.5 — Ahora puedes duplicar una oportunidad desde su ficha: crea una copia con los mismos datos y abre el editor para cambiar solo lo necesario. Ideal para cargar rápido oportunidades parecidas.",
+    "v3.5 — Ahora puedes duplicar una oportunidad desde su ficha: crea una copia con los mismos datos y abre el editor para cambiar solo lo necesario.",
     "v3.4 — Al filtrar por mes en el pipeline ahora también ves lo Cotizado en ese mes (según la fecha de cotización) y cuántas cotizaciones fueron, junto a Pedido, Facturado y Movimientos.",
     "v3.3 — El Excel del pipeline incluye una columna Monto (USD) junto a la de pesos: muestra el importe original en dólares si así se capturó, o el equivalente al tipo de cambio actual.",
     "v3.2 — El Excel del pipeline se reordenó siguiendo el flujo de venta: Oportunidad, Etapa, Cliente, Cotización y su fecha, Monto, Margen, OC, Pedido, Factura y sus fechas, y al final utilidad/comisión y datos de contacto.",
@@ -957,7 +2255,7 @@ const MANUAL = [
     "v2.1 — Fechas de cotización, pedido y factura (se sellan solas al avanzar); se elimina la etapa Ganado (Pedido ya implica venta ganada); Activas son solo visita, cotizado y por cerrar; flujo de etapas ilustrado en este manual.",
     "v2.0 — Resumen del pipeline con Pedido y Facturado y acumulado por mes; margen y calculadora de comisiones; N° de cotización y OC del cliente; filtro Todas al inicio.",
     "v1.9 — Comentarios en los pendientes; orden por prioridad en Hoy; los registros de tiempo de días anteriores ya se pueden eliminar.",
-    "v1.8 — El nombre Centro de Control en la barra superior regresa a la pantalla de inicio.",
+    "v1.8 — El nombre Brida en la barra superior regresa a la pantalla de inicio.",
     "v1.7 — Pantalla de inicio en cada apertura: fecha completa con año y resumen de pendientes del día estilo notificaciones.",
     "v1.6 — Pantalla de inicio y este manual con índice (botón ?); N° de pedido y factura con etapa Facturado; metas con fechas y cronograma Gantt.",
     "v1.5 — Envío de pendientes a Google Tasks y Keep: lista con filtro y botón individual por pendiente.",
@@ -1024,7 +2322,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
       <div className="w-full max-w-md mx-auto flex-1 flex flex-col">
         <div className="flex items-center justify-center gap-2 mt-1">
           <Zap size={18} style={{ color: C.ambar }} />
-          <span style={{ ...dsp, letterSpacing: "0.16em" }} className="text-base font-bold uppercase"><span style={{ color: "#fff" }}>Centro de</span> <span style={{ color: C.ambar }}>Control</span></span>
+          <span style={{ ...dsp, letterSpacing: "0.16em" }} className="text-base font-bold uppercase"><span style={{ color: "#fff" }}>Bri</span><span style={{ color: C.ambar }}>da</span></span>
         </div>
         <div className="text-center mt-6">
           <div className="text-2xl font-semibold" style={{ color: "#fff" }}>{fHoyCompleto()}</div>
@@ -1082,7 +2380,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v3.7</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v5.0.0 · Brida</div>
         </div>
       </div>
     </div>
@@ -1094,8 +2392,8 @@ function AsistenteSheet({ onCerrar, onAplicar }) {
   const [texto, setTexto] = useState("");
   const [interim, setInterim] = useState("");
   const [oyendo, setOyendo] = useState(false);
-  const [motor, setMotor] = useState(() => { try { return localStorage.getItem("edb-centro-motor") || "local"; } catch { return "local"; } });
-  const [clave, setClave] = useState(() => { try { return localStorage.getItem("edb-centro-apikey") || ""; } catch { return ""; } });
+  const [motor, setMotor] = useState(() => { try { return localStorage.getItem("brida-motor") || "local"; } catch { return "local"; } });
+  const [clave, setClave] = useState(() => { try { return localStorage.getItem("brida-apikey") || ""; } catch { return ""; } });
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
   const [res, setRes] = useState(null);
@@ -1128,8 +2426,8 @@ function AsistenteSheet({ onCerrar, onAplicar }) {
   useEffect(() => () => { oyendoRef.current = false; try { recRef.current && recRef.current.stop(); } catch (e) {} }, []);
 
   const cerrar = () => { pararVoz(); onCerrar(); };
-  const cambiarMotor = (m) => { setMotor(m); try { localStorage.setItem("edb-centro-motor", m); } catch (e) {} };
-  const cambiarClave = (v) => { setClave(v); try { localStorage.setItem("edb-centro-apikey", v); } catch (e) {} };
+  const cambiarMotor = (m) => { setMotor(m); try { localStorage.setItem("brida-motor", m); } catch (e) {} };
+  const cambiarClave = (v) => { setClave(v); try { localStorage.setItem("brida-apikey", v); } catch (e) {} };
 
   const interpretar = async () => {
     const txt = texto.trim(); if (!txt) return;
@@ -1244,10 +2542,18 @@ export default function App() {
   const [ahora, setAhora] = useState(Date.now());
   const [expand, setExpand] = useState(null);
   const [oppEdit, setOppEdit] = useState(null);
+  const [cliEdit, setCliEdit] = useState(null);
+  const [buscarCli, setBuscarCli] = useState("");
+  const [cotEdit, setCotEdit] = useState(null);
+  const [catOpen, setCatOpen] = useState(false);
+  const [analisisOpen, setAnalisisOpen] = useState(false);
+  const [verImportar, setVerImportar] = useState(false);
+  const [iaOpen, setIaOpen] = useState(false);
   const [verCierre, setVerCierre] = useState(false);
   const [verProx, setVerProx] = useState(false);
   const [verHechas, setVerHechas] = useState(false);
   const [filtroE, setFiltroE] = useState("todas");
+  const [vista, setVista] = useState("todas");
   const [busca, setBusca] = useState("");
   const [copiado, setCopiado] = useState(false);
   const [textoManual, setTextoManual] = useState(null);
@@ -1271,8 +2577,6 @@ export default function App() {
   const [mesSel, setMesSel] = useState("");
   const [verComision, setVerComision] = useState(false);
   const [verSeguimiento, setVerSeguimiento] = useState(false);
-  const [verImportar, setVerImportar] = useState(false);
-  const [verImportarPipe, setVerImportarPipe] = useState(false);
   const [verVisitas, setVerVisitas] = useState(false);
   const [visitaEdit, setVisitaEdit] = useState(null);
   const [mesCom, setMesCom] = useState("");
@@ -1283,6 +2587,12 @@ export default function App() {
   const [verIntro, setVerIntro] = useState(true);
   const [verCuenta, setVerCuenta] = useState(false);
   const [sesion, setSesion] = useState(null);
+  const [rol, setRol] = useState(null);
+  const [miId, setMiId] = useState(null);
+  const [equipo, setEquipo] = useState([]);
+  const [gerenteOpen, setGerenteOpen] = useState(false);
+  const [reasigOpen, setReasigOpen] = useState(false);
+  const [comprasOpen, setComprasOpen] = useState(false);
   const [sync, setSync] = useState("local");
   const dataRef = useRef(null);
   const sesionRef = useRef(null);
@@ -1291,7 +2601,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      const r = localStorage.getItem("edb-centro-v1");
+      const r = localStorage.getItem("brida-v1");
       const d = r ? { ...VACIO, ...JSON.parse(r) } : VACIO;
       d.pipeline = (d.pipeline || []).map((o) => o.etapa === "ganado" ? { ...o, etapa: "oc" } : o);
       setData(d);
@@ -1306,11 +2616,17 @@ export default function App() {
 
   useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { sesionRef.current = sesion; }, [sesion]);
+  useEffect(() => {
+    if (sesion) {
+      miPerfil().then((p) => { setRol((p && p.rol) || "vendedor"); setMiId((p && p.id) || null); }).catch(() => setRol("vendedor"));
+      cargarEquipo().then((e) => setEquipo((e && e.perfiles) || [])).catch(() => setEquipo([]));
+    } else { setRol(null); setMiId(null); setEquipo([]); }
+  }, [sesion]);
 
   const guardar = (next) => {
     const conTs = { ...next, __actualizado: new Date().toISOString() };
     setData(conTs);
-    try { localStorage.setItem("edb-centro-v1", JSON.stringify(conTs)); } catch { setSinStorage(true); }
+    try { localStorage.setItem("brida-v1", JSON.stringify(conTs)); } catch { setSinStorage(true); }
     if (sesionRef.current) {
       setSync("sincronizando");
       clearTimeout(pushTimerRef.current);
@@ -1346,7 +2662,7 @@ export default function App() {
           }
           const d = { ...VACIO, ...nube };
           setData(d);
-          try { localStorage.setItem("edb-centro-v1", JSON.stringify(d)); } catch {}
+          try { localStorage.setItem("brida-v1", JSON.stringify(d)); } catch {}
         } else {
           await subirNube(uid, local);
         }
@@ -1367,7 +2683,7 @@ export default function App() {
           if (nubeTs > localTs) {
             const d = { ...VACIO, ...nube };
             setData(d);
-            try { localStorage.setItem("edb-centro-v1", JSON.stringify(d)); } catch {}
+            try { localStorage.setItem("brida-v1", JSON.stringify(d)); } catch {}
           }
           setSync("sincronizado");
         }
@@ -1446,9 +2762,12 @@ export default function App() {
 
   const guardarOpp = (o) => {
     const ts = new Date().toISOString();
-    const pipeline = o.id
-      ? data.pipeline.map((x) => x.id === o.id ? { ...x, ...o, actualizada: ts } : x)
-      : [{ ...o, id: uid(), creada: ts, actualizada: ts }, ...data.pipeline];
+    const o2 = { ...o };
+    if (!o2.fechaVisita) o2.fechaVisita = o.id ? (data.pipeline.find((x) => x.id === o.id) || {}).fechaVisita || ts.slice(0, 10) : ts.slice(0, 10);
+    if (!o.id && !o2.traidoPorId && miId) o2.traidoPorId = miId;
+    const pipeline = o2.id
+      ? data.pipeline.map((x) => x.id === o2.id ? { ...x, ...o2, actualizada: ts } : x)
+      : [{ ...o2, id: uid(), creada: ts, actualizada: ts }, ...data.pipeline];
     guardar({ ...data, pipeline }); setOppEdit(null);
   };
   const delOpp = (id) => { guardar({ ...data, pipeline: data.pipeline.filter((o) => o.id !== id) }); setOppEdit(null); };
@@ -1464,6 +2783,58 @@ export default function App() {
     guardar({ ...data, pipeline: [copia, ...data.pipeline] });
     setOppEdit(copia);
   };
+  const guardarCliente = (c, cts, acts) => {
+    const ts = new Date().toISOString();
+    const id = c.id || uid();
+    const clientes = c.id
+      ? (data.clientes || []).map((x) => x.id === id ? { ...x, ...c, actualizada: ts } : x)
+      : [{ ...c, id, creada: ts, actualizada: ts }, ...(data.clientes || [])];
+    const otros = (data.contactos || []).filter((ct) => ct.clienteId !== id);
+    const nuevos = (cts || []).map((ct) => ({ ...ct, id: ct.id || uid(), clienteId: id }));
+    const otrosAct = (data.actividades || []).filter((a) => a.clienteId !== id);
+    const nuevosAct = (acts || []).map((a) => ({ ...a, id: a.id || uid(), clienteId: id }));
+    guardar({ ...data, clientes, contactos: [...otros, ...nuevos], actividades: [...otrosAct, ...nuevosAct] }); setCliEdit(null);
+  };
+  const delCliente = (id) => {
+    guardar({ ...data, clientes: (data.clientes || []).filter((c) => c.id !== id), contactos: (data.contactos || []).filter((ct) => ct.clienteId !== id), actividades: (data.actividades || []).filter((a) => a.clienteId !== id) });
+    setCliEdit(null);
+  };
+  const guardarProducto = (p) => {
+    const id = p.id || uid();
+    const productos = p.id
+      ? (data.productos || []).map((x) => x.id === id ? { ...x, ...p } : x)
+      : [{ ...p, id, creada: new Date().toISOString() }, ...(data.productos || [])];
+    guardar({ ...data, productos });
+  };
+  const delProducto = (id) => guardar({ ...data, productos: (data.productos || []).filter((p) => p.id !== id) });
+  const importarProductos = (lista, marca, version) => {
+    const t = new Date().toISOString();
+    const norm = (s) => (s || "").trim().toLowerCase();
+    const porCodigo = {}; (data.productos || []).forEach((p) => { if (p.codigo) porCodigo[norm(p.codigo)] = p; });
+    lista.forEach((p) => {
+      const k = norm(p.codigo);
+      const base = { ...p, marca: marca || p.marca || "", listaVersion: version || p.listaVersion || "" };
+      if (k && porCodigo[k]) porCodigo[k] = { ...porCodigo[k], ...base, id: porCodigo[k].id, creada: porCodigo[k].creada };
+      else { const np = { ...base, id: uid(), creada: t }; porCodigo[k || np.id] = np; }
+    });
+    guardar({ ...data, productos: Object.values(porCodigo) });
+  };
+  const importarDescuentos = (items) => {
+    const t = new Date().toISOString();
+    const prev = data.descuentos || [];
+    const porCodigo = {}; prev.forEach((d) => { porCodigo[(d.codigo || "").trim().toLowerCase()] = d; });
+    items.forEach((d) => { const k = (d.codigo || "").trim().toLowerCase(); porCodigo[k] = { ...(porCodigo[k] || {}), ...d, id: (porCodigo[k] && porCodigo[k].id) || uid(), creada: (porCodigo[k] && porCodigo[k].creada) || t }; });
+    guardar({ ...data, descuentos: Object.values(porCodigo) });
+  };
+  const guardarCotizacion = (c) => {
+    const ts = new Date().toISOString();
+    const id = c.id || uid();
+    const cotizaciones = c.id
+      ? (data.cotizaciones || []).map((x) => x.id === id ? { ...x, ...c, actualizada: ts } : x)
+      : [{ ...c, id, creada: ts, actualizada: ts }, ...(data.cotizaciones || [])];
+    guardar({ ...data, cotizaciones }); setCotEdit(null);
+  };
+  const delCotizacion = (id) => { guardar({ ...data, cotizaciones: (data.cotizaciones || []).filter((c) => c.id !== id) }); setCotEdit(null); };
   const setOppCampos = (id, campos) => guardar({ ...data, pipeline: data.pipeline.map((o) => o.id === id ? { ...o, ...campos } : o) });
   const guardarVisita = (v) => {
     const ts = new Date().toISOString();
@@ -1533,9 +2904,9 @@ export default function App() {
   const copiarMejoras = async () => {
     const pend = (data.mejoras || []).filter((m) => !m.hecha);
     const txt = [
-      'Actualiza mi app "Centro de Control Comercial" (PWA React, entrégala como index.html autónomo) con estas mejoras:',
+      'Actualiza mi app "Brida" (PWA React, entrégala como index.html autónomo) con estas mejoras:',
       ...pend.map((m, i) => `${i + 1}. ${m.texto}`),
-      "Conserva el diseño HMI, el guardado con localStorage (clave edb-centro-v1) y todos los campos de datos existentes. Actualiza también el manual de ayuda y su sección de Novedades con la nueva versión.",
+      "Conserva el diseño HMI, el guardado con localStorage (clave brida-v1) y todos los campos de datos existentes. Actualiza también el manual de ayuda y su sección de Novedades con la nueva versión.",
     ].join("\n");
     try { await navigator.clipboard.writeText(txt); setCopiadoM(true); setTimeout(() => setCopiadoM(false), 2000); }
     catch { setTextoManual(txt); }
@@ -1571,7 +2942,7 @@ export default function App() {
         const d = JSON.parse(lector.result);
         if (!d || !Array.isArray(d.tareas) || !Array.isArray(d.pipeline)) throw new Error("formato");
         if (window.confirm("Esto reemplazará los datos actuales por los del respaldo. ¿Continuar?")) guardar({ ...VACIO, ...d });
-      } catch { window.alert("El archivo no es un respaldo válido del Centro de Control."); }
+      } catch { window.alert("El archivo no es un respaldo válido del Brida."); }
     };
     lector.readAsText(f);
     ev.target.value = "";
@@ -1589,9 +2960,9 @@ export default function App() {
     const sel = data.tareas
       .filter((t) => envFiltro === "todos" ? true : envFiltro === "comp" ? t.hecha : !t.hecha)
       .sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""));
-    return { n: sel.length, txt: [`PENDIENTES — Centro de Control (${fFecha(hoy())})`, ...sel.map((t) => `${t.hecha ? "☑" : "☐"} ${textoTarea(t)}`)].join("\n") };
+    return { n: sel.length, txt: [`PENDIENTES — Brida (${fFecha(hoy())})`, ...sel.map((t) => `${t.hecha ? "☑" : "☐"} ${textoTarea(t)}`)].join("\n") };
   };
-  const compartirLista = () => { const { n, txt } = listaEnvio(); if (n) compartirTexto("Pendientes — Centro de Control", txt); };
+  const compartirLista = () => { const { n, txt } = listaEnvio(); if (n) compartirTexto("Pendientes — Brida", txt); };
   const copiarLista = async () => {
     const { n, txt } = listaEnvio(); if (!n) return;
     try { await navigator.clipboard.writeText(txt); setCopiadoT(true); setTimeout(() => setCopiadoT(false), 2000); }
@@ -1604,6 +2975,7 @@ export default function App() {
   };
 
   const oppsFiltradas = data.pipeline
+    .filter((o) => vista === "todas" ? true : vista === "mias" ? ((o.traidoPorId || o.vendedorId) === miId) : (o.cotizadorId === miId))
     .filter((o) => filtroE === "todas" ? true : o.etapa === filtroE)
     .filter((o) => { const q = busca.trim().toLowerCase(); return !q || [o.cliente, o.titulo, o.marca, o.plaza, o.vendedor, o.numCotizacion, o.ocCliente, o.numPedido, o.numFactura].some((v) => (v || "").toLowerCase().includes(q)); })
     .sort((a, b) => {
@@ -1620,13 +2992,15 @@ export default function App() {
     { id: "hoy", icon: ListTodo, label: "Hoy" },
     { id: "tiempo", icon: Timer, label: "Tiempo" },
     { id: "pipeline", icon: Briefcase, label: "Pipeline" },
+    { id: "clientes", icon: Building2, label: "Clientes" },
+    { id: "cotiza", icon: FileText, label: "Cotiza" },
     { id: "metas", icon: Target, label: "Metas" },
     { id: "cierre", icon: FileDown, label: "Cierre" },
     { id: "comisiones", icon: Percent, label: "Comis." },
   ];
 
   return (
-    <div className="min-h-screen" style={{ background: C.fondo, color: C.tinta }}>
+    <div className="min-h-screen lg:pl-56" style={{ background: C.fondo, color: C.tinta }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
         * { -webkit-tap-highlight-color: transparent; }
@@ -1637,14 +3011,39 @@ export default function App() {
         ::-webkit-scrollbar { height: 0; width: 6px }
       `}</style>
 
+      {/* ── Barra lateral (solo PC) ── */}
+      <aside className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-56 z-40 px-3 py-4" style={{ background: C.bezel, borderRight: `1px solid ${C.bezel2}` }}>
+        <button onClick={() => setVerIntro(true)} className="flex items-center gap-2 px-2 mb-5">
+          <Zap size={20} style={{ color: C.ambar }} />
+          <span style={{ ...dsp, letterSpacing: "0.16em" }} className="text-xl font-bold uppercase">
+            <span style={{ color: "#fff" }}>Bri</span><span style={{ color: C.ambar }}>da</span>
+          </span>
+        </button>
+        <nav className="flex flex-col gap-1 flex-1">
+          {NAV.map((n) => {
+            const activo = tab === n.id;
+            return (
+              <button key={n.id} onClick={() => { setTab(n.id); setExpand(null); }} className="flex items-center gap-3 px-3 py-2.5 rounded-lg" style={{ background: activo ? C.bezel2 : "transparent" }}>
+                <n.icon size={18} style={{ color: activo ? C.ambar : "#7C8DA0" }} />
+                <span style={{ ...dsp, letterSpacing: "0.06em", color: activo ? "#fff" : "#7C8DA0" }} className="text-sm font-semibold uppercase">{n.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <button onClick={() => setVerCuenta(true)} className="flex items-center gap-3 px-3 py-2.5 rounded-lg" style={{ color: "#7C8DA0" }}>
+          {sync === "local" || sync === "offline" ? <CloudOff size={18} style={{ color: SYNC_COL[sync] }} /> : <Cloud size={18} style={{ color: SYNC_COL[sync] }} />}
+          <span style={{ ...dsp }} className="text-sm font-semibold uppercase">Cuenta</span>
+        </button>
+      </aside>
+
       {/* ── Bisel superior: identidad + regleta de estado ── */}
       <header className="sticky top-0 z-40" style={{ background: C.bezel, borderBottom: `3px solid ${C.ambar}` }}>
-        <div className="max-w-xl mx-auto px-4 pt-3 pb-2.5">
+        <div className="max-w-xl lg:max-w-3xl mx-auto px-4 pt-3 pb-2.5">
           <div className="flex items-end justify-between">
             <button onClick={() => setVerIntro(true)} aria-label="Volver a la pantalla de inicio" className="flex items-center gap-2">
               <Zap size={18} style={{ color: C.ambar }} />
               <span style={{ ...dsp, letterSpacing: "0.16em" }} className="text-lg font-bold uppercase" >
-                <span style={{ color: "#fff" }}>Centro de</span> <span style={{ color: C.ambar }}>Control</span>
+                <span style={{ color: "#fff" }}>Bri</span><span style={{ color: C.ambar }}>da</span>
               </span>
             </button>
             <div className="flex items-center gap-2">
@@ -1672,7 +3071,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-xl mx-auto px-4 pb-32 pt-3">
+      <main className="max-w-xl lg:max-w-3xl mx-auto px-4 pb-32 lg:pb-10 pt-3">
         {sinStorage && (
           <div className="rounded-xl border px-3 py-2 text-xs flex items-center gap-2 mb-2" style={{ borderColor: C.ambar, background: C.ambarBg, color: C.tinta }}>
             <AlertTriangle size={14} style={{ color: C.ambar }} /> Almacenamiento no disponible: los datos no se guardarán al salir.
@@ -1845,6 +3244,55 @@ export default function App() {
         {/* ════ PIPELINE ════ */}
         {tab === "pipeline" && (
           <div>
+            <button onClick={() => setAnalisisOpen(true)} className="w-full mb-3 py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}>
+              <BarChart3 size={16} /> Análisis y pronóstico
+            </button>
+            <button onClick={() => setIaOpen(true)} className="w-full mb-3 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ background: C.ambar, color: "#fff" }}>
+              <Zap size={16} /> Asistente IA
+            </button>
+            <button onClick={() => setComprasOpen(true)} className="w-full mb-3 py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}>
+              <Package size={16} /> Compras y entregas
+            </button>
+            {(rol === "gerente" || rol === "admin") && (
+              <button onClick={() => setGerenteOpen(true)} className="w-full mb-3 py-2.5 rounded-xl font-semibold flex items-center justify-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}>
+                <Users size={16} /> Tablero de gerente
+              </button>
+            )}
+            {(rol === "gerente" || rol === "admin") && (
+              <button onClick={() => setReasigOpen(true)} className="w-full mb-3 py-2.5 rounded-xl border font-semibold flex items-center justify-center gap-1.5" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}>
+                <FileSpreadsheet size={16} /> Control de facturación
+              </button>
+            )}
+            {(() => {
+              const H = hoy();
+              const d7 = new Date(); d7.setDate(d7.getDate() + 7);
+              const en7 = `${d7.getFullYear()}-${String(d7.getMonth() + 1).padStart(2, "0")}-${String(d7.getDate()).padStart(2, "0")}`;
+              const seg = (data.pipeline || []).filter((o) => o.fechaAccion && !["facturado", "perdido"].includes(o.etapa));
+              const venc = seg.filter((o) => o.fechaAccion < H).sort((a, b) => a.fechaAccion.localeCompare(b.fechaAccion));
+              const hoyS = seg.filter((o) => o.fechaAccion === H);
+              const prox = seg.filter((o) => o.fechaAccion > H && o.fechaAccion <= en7).sort((a, b) => a.fechaAccion.localeCompare(b.fechaAccion));
+              if (!venc.length && !hoyS.length && !prox.length) return null;
+              const fila = (o, col) => (
+                <button key={o.id} onClick={() => setOppEdit(o)} className="w-full text-left flex items-center gap-2 py-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: col }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm truncate" style={{ color: C.tinta }}>{o.cliente}{o.titulo ? ` — ${o.titulo}` : ""}</div>
+                    <div className="text-xs truncate" style={{ color: C.dim }}>{o.proximaAccion || "Próxima acción"}</div>
+                  </div>
+                  <span className="text-xs whitespace-nowrap" style={{ ...mono, color: col }}>{o.fechaAccion.slice(5)}</span>
+                </button>
+              );
+              return (
+                <div className="rounded-xl border p-3 mb-3" style={{ borderColor: C.borde, background: C.panel }}>
+                  <div className="text-xs uppercase font-semibold mb-1 flex items-center gap-1.5" style={{ ...dsp, color: C.dim, letterSpacing: "0.12em" }}>
+                    <Send size={12} style={{ color: C.ambar }} /> Seguimiento
+                  </div>
+                  {venc.length ? <><div className="text-xs font-semibold mt-1" style={{ color: C.rojo }}>Vencidas ({venc.length})</div>{venc.slice(0, 6).map((o) => fila(o, C.rojo))}</> : null}
+                  {hoyS.length ? <><div className="text-xs font-semibold mt-1" style={{ color: C.ambar }}>Para hoy ({hoyS.length})</div>{hoyS.map((o) => fila(o, C.ambar))}</> : null}
+                  {prox.length ? <><div className="text-xs font-semibold mt-1" style={{ color: C.dim }}>Próximos 7 días ({prox.length})</div>{prox.slice(0, 6).map((o) => fila(o, C.azul))}</> : null}
+                </div>
+              );
+            })()}
             <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: C.panel }}>
               <div className="flex items-center justify-between mb-2">
                 <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.12em" }}>Resumen del pipeline</div>
@@ -1902,6 +3350,21 @@ export default function App() {
                 <span><b>{der.sinAccion.length}</b> {der.sinAccion.length === 1 ? "oportunidad activa sin próxima acción" : "oportunidades activas sin próxima acción"}. Toda oportunidad viva necesita un siguiente paso con fecha.</span>
               </div>
             )}
+            {(() => {
+              const esperando = data.pipeline.filter(staleVisita);
+              return esperando.length ? (
+                <button onClick={() => setFiltroE("visita")} className="w-full rounded-xl border px-3 py-2 mt-2 text-xs flex items-center gap-2 text-left" style={{ borderColor: C.rojo, background: C.rojoBg }}>
+                  <Timer size={14} style={{ color: C.rojo }} className="shrink-0" />
+                  <span><b>{esperando.length}</b> {esperando.length === 1 ? "cliente lleva" : "clientes llevan"} +24 h como oportunidad entrante sin cotizar. Cotiza pronto para no enfriar la venta.</span>
+                </button>
+              ) : null;
+            })()}
+
+            <div className="flex gap-1 mt-3 p-1 rounded-lg" style={{ background: C.bezel2 }}>
+              {[["todas", "Todas"], ["mias", "Las que traje"], ["cotizo", "Las que cotizo"]].map(([v, lbl]) => (
+                <button key={v} onClick={() => setVista(v)} className="flex-1 py-1.5 rounded-md text-xs font-semibold" style={{ background: vista === v ? "#fff" : "transparent", color: vista === v ? C.tinta : C.dim }}>{lbl}</button>
+              ))}
+            </div>
 
             <div className="flex items-center gap-2 mt-3 rounded-lg border px-3 py-2" style={{ borderColor: C.borde, background: "#fff" }}>
               <Search size={15} style={{ color: C.dim }} />
@@ -1928,7 +3391,7 @@ export default function App() {
             </button>
 
             <div className="space-y-2 mt-2">
-              {oppsFiltradas.length === 0 && <Vacio>Sin oportunidades aquí. Cada acuerdo de visita o cotización enviada merece una tarjeta.</Vacio>}
+              {oppsFiltradas.length === 0 && <Vacio>Sin oportunidades aquí. Cada oportunidad entrante o cotización enviada merece una tarjeta.</Vacio>}
               {oppsFiltradas.map((o) => {
                 const e = etapa(o.etapa);
                 const venc = o.fechaAccion && o.fechaAccion < der.H && ACTIVAS.includes(o.etapa);
@@ -1939,10 +3402,22 @@ export default function App() {
                         <div className="min-w-0">
                           <div className="text-sm font-semibold truncate">{o.cliente}</div>
                           {o.titulo && <div className="text-xs truncate" style={{ color: C.dim }}>{o.titulo}</div>}
+                          {(() => {
+                            const tra = (equipo.find((m) => m.id === (o.traidoPorId || o.vendedorId)) || {}).nombre;
+                            const cot = (equipo.find((m) => m.id === o.cotizadorId) || {}).nombre;
+                            const partes = [];
+                            if (tra) partes.push("Trajo: " + tra);
+                            if (cot) partes.push("Cotiza: " + cot);
+                            return partes.length ? <div className="text-[11px] truncate mt-0.5" style={{ color: C.azul }}>{partes.join(" · ")}</div> : null;
+                          })()}
                         </div>
                         <div className="text-sm font-semibold shrink-0" style={mono}>{fMXN(o.monto)}</div>
                       </div>
                       <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                        {(() => {
+                          const cfg = CLASE_CLIENTE[clasificarCliente(o.cliente, data.pipeline, data.clientes).tipo];
+                          return cfg ? <span className="text-xs px-1.5 py-0.5 rounded font-semibold" style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}</span> : null;
+                        })()}
                         <Etiqueta e={e} />
                         {o.marca && <span className="text-xs px-1.5 py-0.5 rounded border" style={{ borderColor: C.borde, color: C.dim }}>{o.marca}</span>}
                         {o.plaza && <span className="text-xs" style={{ color: C.dim }}>{o.plaza}</span>}
@@ -1980,6 +3455,82 @@ export default function App() {
         )}
 
         {/* ════ METAS ════ */}
+        {tab === "clientes" && (
+          <div>
+            <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: C.panel }}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.12em" }}>Clientes ({(data.clientes || []).length})</div>
+                <button onClick={() => setCliEdit({})} className="px-3 py-2 rounded-xl font-semibold flex items-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}>
+                  <Plus size={16} /> Nuevo
+                </button>
+              </div>
+              <div className="relative mb-2">
+                <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: C.dim }} />
+                <input value={buscarCli} onChange={(e) => setBuscarCli(e.target.value)} placeholder="Buscar cliente…" className="w-full rounded-lg pl-8 pr-3 py-2 text-sm" style={inp} />
+              </div>
+              {(data.clientes || []).length === 0 ? (
+                <div className="text-sm text-center py-6" style={{ color: C.dim }}>Aún no tienes clientes. Toca «Nuevo» para crear tu primera cuenta.</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {(data.clientes || []).filter((c) => !buscarCli || (c.nombre || "").toLowerCase().includes(buscarCli.toLowerCase())).map((c) => {
+                    const est = ESTADOS_CLIENTE.find((s) => s.id === c.estado) || ESTADOS_CLIENTE[0];
+                    const nCt = (data.contactos || []).filter((ct) => ct.clienteId === c.id).length;
+                    const tipoLb = (TIPOS_CLIENTE.find((t) => t.id === c.tipo) || {}).label || "";
+                    const cfg = CLASE_CLIENTE[clasificarCliente(c.nombre, data.pipeline, data.clientes).tipo];
+                    return (
+                      <button key={c.id} onClick={() => setCliEdit(c)} className="w-full text-left rounded-xl border px-3 py-2.5 flex items-center gap-3" style={{ borderColor: cfg ? cfg.borde : C.borde, background: cfg ? cfg.fondo : "#fff" }}>
+                        <Building2 size={18} style={{ color: est.color }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold truncate" style={{ color: C.tinta }}>{c.nombre}</div>
+                          <div className="text-xs truncate" style={{ color: C.dim }}>{[tipoLb, c.plaza, nCt ? `${nCt} contacto${nCt > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ") || "Sin datos adicionales"}</div>
+                        </div>
+                        {cfg ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ color: cfg.color, background: cfg.bg }}>{cfg.label}</span> : <span className="text-xs px-2 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ color: est.color, background: est.color + "22" }}>{est.label}</span>}
+                        <ChevronRight size={16} style={{ color: C.dim }} />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="text-xs mt-3 px-1" style={{ color: C.dim }}>Las oportunidades se ligan al cliente por su nombre. Escríbelo igual en el pipeline y en la ficha para verlas juntas.</div>
+          </div>
+        )}
+        {tab === "cotiza" && (
+          <div>
+            <div className="rounded-xl border p-3" style={{ borderColor: C.borde, background: C.panel }}>
+              <div className="flex items-center justify-between mb-2 gap-2">
+                <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.12em" }}>Cotizaciones ({(data.cotizaciones || []).length})</div>
+                <div className="flex gap-1.5">
+                  <button onClick={() => setCatOpen(true)} className="px-2.5 py-2 rounded-xl border font-semibold flex items-center gap-1.5 text-sm" style={{ borderColor: C.borde, color: C.tinta, background: "#fff" }}><Package size={15} /> Catálogo</button>
+                  <button onClick={() => setCotEdit({})} className="px-3 py-2 rounded-xl font-semibold flex items-center gap-1.5" style={{ background: C.tinta, color: "#fff" }}><Plus size={16} /> Nueva</button>
+                </div>
+              </div>
+              {(data.cotizaciones || []).length === 0 ? (
+                <div className="text-sm text-center py-6" style={{ color: C.dim }}>Sin cotizaciones. Toca «Nueva» para crear la primera. Tip: llena tu «Catálogo» para armarlas en segundos.</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {(data.cotizaciones || []).map((c) => {
+                    const st = ESTADOS_COTIZACION.find((s) => s.id === c.estado) || ESTADOS_COTIZACION[0];
+                    const t = totalesCot(c);
+                    return (
+                      <button key={c.id} onClick={() => setCotEdit(c)} className="w-full text-left rounded-xl border px-3 py-2.5 flex items-center gap-3" style={{ borderColor: C.borde, background: "#fff" }}>
+                        <FileText size={18} style={{ color: st.color }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold truncate" style={{ color: C.tinta }}>{c.cliente || "Sin cliente"}</div>
+                          <div className="text-xs truncate" style={{ color: C.dim }}>{[c.folio, c.fecha, `${(c.partidas || []).length} part.`].filter(Boolean).join(" · ")}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-semibold" style={mono}>{fMXN(t.total)}{c.moneda === "USD" ? " USD" : ""}</div>
+                          <span className="text-xs font-semibold" style={{ color: st.color }}>{st.label}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {tab === "metas" && (
           <div>
             <div className="text-xs" style={{ color: C.dim }}>Metas y proyectos. Toca una meta para ponerle fecha de inicio y fin: las que tengan ambas aparecen en el cronograma. Revísalas cada viernes — una meta sin acción es solo un deseo.</div>
@@ -2089,14 +3640,6 @@ export default function App() {
               <CalendarDays size={13} className="shrink-0 mt-0.5" /> Exporta cada viernes: te sirve de respaldo y deja Monday al día en una sola importación.
             </div>
 
-            <Sec>Importar</Sec>
-            <button onClick={() => setVerImportarPipe(true)} className="w-full rounded-xl border px-3 py-3 flex items-center gap-3 text-left" style={{ borderColor: C.borde, background: C.panel }}>
-              <FileUp size={18} style={{ color: C.ambar }} className="shrink-0" />
-              <span className="flex-1"><span className="text-sm font-semibold block">Importar pipeline (Excel)</span><span className="text-xs" style={{ color: C.dim }}>Reconstruye oportunidades desde el Excel que exportas aquí</span></span>
-              <ChevronRight size={16} style={{ color: C.dim }} />
-            </button>
-            <div className="text-xs mt-2" style={{ color: C.dim }}>Útil para restaurar tu pipeline o pasarlo a otro dispositivo. Las oportunidades que ya tienes no se duplican.</div>
-
             <Sec>Enviar a Google Tasks / Keep</Sec>
             <div className="rounded-xl border p-2.5" style={{ borderColor: C.borde, background: C.panel }}>
               <div className="flex gap-1.5">
@@ -2155,7 +3698,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <div className="text-xs text-center mt-4" style={{ ...mono, color: C.dim }}>Centro de Control v3.7 · PWA · nube</div>
+            <div className="text-xs text-center mt-4" style={{ ...mono, color: C.dim }}>Brida v3.3 · PWA · nube</div>
           </div>
         )}
 
@@ -2237,7 +3780,7 @@ export default function App() {
       </main>
 
       {/* ── Bisel inferior: navegación ── */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40" style={{ background: C.bezel, borderTop: `1px solid ${C.bezel2}` }}>
+      <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden" style={{ background: C.bezel, borderTop: `1px solid ${C.bezel2}` }}>
         <div className="max-w-xl mx-auto flex">
           {NAV.map((n) => {
             const activo = tab === n.id;
@@ -2366,16 +3909,33 @@ export default function App() {
       })()}
 
       {verSeguimiento && <SeguimientoSheet opps={data.pipeline} onCerrar={() => setVerSeguimiento(false)} />}
-      {verImportar && <ImportarSheet titulo="Importar de Monday" descripcion="Sube el Excel (.xlsx) que descargaste de tu tablero de Monday. Tomo cliente, título, monto (pesos o dólares), vendedor, cotización, OC, sucursal y notas. Las que ya tienes en tu pipeline (mismo folio de Monday o de cotización) se omiten automáticamente." parsear={(hojas) => mapearMonday(hojas, data.pipeline, data.tipoCambio || 0)} onImportar={importarOpps} onCerrar={() => setVerImportar(false)} />}
-      {verImportarPipe && <ImportarSheet titulo="Importar pipeline (Excel)" descripcion="Sube el Excel que esta app genera en «Pipeline en Excel». Reconstruyo las oportunidades con sus datos: etapa, montos, folios y fechas de cotización, OC, pedido y factura, comisión, vendedor, marca, plaza y notas. Las que ya están en tu pipeline (por cotización o por cliente y título) se omiten." parsear={(hojas) => mapearPipeline(hojas, data.pipeline, data.tipoCambio || 0, ETAPAS)} onImportar={importarOpps} onCerrar={() => setVerImportarPipe(false)} />}
       {verCuenta && <CuentaSheet sesion={sesion} sync={sync} onSalir={cerrarSesion} onCerrar={() => setVerCuenta(false)} />}
       {verVisitas && <VisitasSheet visitas={data.visitas || []} opps={data.pipeline} onNueva={() => setVisitaEdit({})} onEditar={(v) => setVisitaEdit(v)} onCheckin={checkinVisita} onCerrar={() => setVerVisitas(false)} />}
       {visitaEdit !== null && <VisitaEditor visita={visitaEdit} opps={data.pipeline} onGuardar={guardarVisita} onEliminar={() => delVisita(visitaEdit.id)} onCheckin={obtenerUbicacion} onCerrar={() => setVisitaEdit(null)} />}
       {verAsis && <AsistenteSheet onCerrar={() => setVerAsis(false)} onAplicar={aplicarAsistente} />}
 
       {oppEdit !== null && (
-        <OppEditor opp={oppEdit} onGuardar={guardarOpp} onEliminar={() => delOpp(oppEdit.id)} onDuplicar={() => duplicarOpp(oppEdit)} onCerrar={() => setOppEdit(null)} tc={data.tipoCambio || 0} />
+        <OppEditor opp={oppEdit} onGuardar={guardarOpp} onEliminar={() => delOpp(oppEdit.id)} onDuplicar={() => duplicarOpp(oppEdit)} onCerrar={() => setOppEdit(null)} tc={data.tipoCambio || 0} clientes={data.clientes || []} pipeline={data.pipeline || []} equipo={equipo} miId={miId} />
       )}
+      {cliEdit !== null && (
+        <ClienteEditor cliente={cliEdit} contactos={data.contactos || []} actividades={data.actividades || []} opps={data.pipeline || []} onGuardar={guardarCliente} onEliminar={() => delCliente(cliEdit.id)} onCerrar={() => setCliEdit(null)} />
+      )}
+      {cotEdit !== null && (
+        <CotizacionEditor cot={cotEdit} clientes={data.clientes || []} productos={data.productos || []} descuentos={data.descuentos || []} folioAuto={`COT-${String((data.cotizaciones || []).length + 1).padStart(4, "0")}`} onGuardar={guardarCotizacion} onEliminar={() => delCotizacion(cotEdit.id)} onCerrar={() => setCotEdit(null)} />
+      )}
+      {catOpen && (
+        <CatalogoSheet productos={data.productos || []} descuentos={data.descuentos || []} onGuardarProd={guardarProducto} onEliminarProd={delProducto} onImportarProductos={importarProductos} onImportarDescuentos={importarDescuentos} onCerrar={() => setCatOpen(false)} />
+      )}
+      {analisisOpen && (
+        <AnalisisSheet pipeline={data.pipeline || []} onCerrar={() => setAnalisisOpen(false)} />
+      )}
+      {gerenteOpen && (
+        <TableroGerente onCerrar={() => setGerenteOpen(false)} />
+      )}
+      {reasigOpen && <ReasignacionSheet pipeline={data.pipeline} equipo={equipo} onActualizar={(lista) => { const t = new Date().toISOString(); const byId = Object.fromEntries(lista.map((o) => [o.id, o])); guardar({ ...data, pipeline: data.pipeline.map((x) => byId[x.id] ? { ...x, ...byId[x.id], actualizada: t } : x) }); }} onCerrar={() => setReasigOpen(false)} />}
+      {verImportar && <ImportarSheet pipeline={data.pipeline} tc={data.tipoCambio || 0} onImportar={importarOpps} onCerrar={() => setVerImportar(false)} />}
+      {iaOpen && <AsistenteIASheet data={data} onCerrar={() => setIaOpen(false)} />}
+      {comprasOpen && <ComprasSheet pipeline={data.pipeline} onCerrar={() => setComprasOpen(false)} />}
     </div>
   );
 }
