@@ -1,6 +1,6 @@
 {
-  "name": "centro-control-comercial",
-  "version": "3.7.0",
+  "name": "brida",
+  "version": "1.0.0",
   "description": "PWA de gestion comercial: pendientes, tiempo, pipeline, metas y comisiones",
   "scripts": {
     "build": "bash build.sh"
@@ -9,7 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@supabase/supabase-js": "^2.111.0",
+    "@supabase/supabase-js": "^2.110.8",
     "esbuild": "^0.28.1",
     "fflate": "^0.8.3",
     "lucide-react": "^0.383.0",
