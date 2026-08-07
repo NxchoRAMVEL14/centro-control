@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
   ListTodo, Timer, Briefcase, Target, FileDown, Plus, Play, Square,
   Circle, CheckCircle2, ChevronDown, ChevronRight, AlertTriangle, X,
-  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, FileUp, FileSpreadsheet
+  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, FileUp, FileSpreadsheet, Eye, EyeOff
 } from "lucide-react";
 import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos } from "./nube.jsx";
 import { leerXLSX, mapearMonday, mapearPipeline } from "./importar.jsx";
@@ -363,6 +363,7 @@ function CuentaSheet({ sesion, sync, onSalir, onCerrar }) {
   const [modo, setModo] = useState("entrar");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
+  const [verPass, setVerPass] = useState(false);
   const [msg, setMsg] = useState("");
   const [cargando, setCargando] = useState(false);
   const enviar = async () => {
@@ -404,7 +405,12 @@ function CuentaSheet({ sesion, sync, onSalir, onCerrar }) {
                 ))}
               </div>
               <input type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Correo" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
-              <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Contraseña (mínimo 6 caracteres)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+              <div className="relative">
+                <input type={verPass ? "text" : "password"} value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Contraseña (mínimo 6 caracteres)" className="w-full rounded-lg pl-3 pr-11 py-2.5 text-sm" style={inp} />
+                <button type="button" onClick={() => setVerPass((v) => !v)} aria-label={verPass ? "Ocultar contraseña" : "Mostrar contraseña"} title={verPass ? "Ocultar contraseña" : "Mostrar contraseña"} className="absolute inset-y-0 right-0 flex items-center px-3" style={{ color: C.dim }}>
+                  {verPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
               {msg ? <div className="text-xs" style={{ color: msg.includes("creada") ? "#2F9467" : C.rojo }}>{msg}</div> : null}
               <button onClick={enviar} disabled={cargando} className="w-full py-3 rounded-xl font-semibold" style={{ background: C.ambar, color: "#fff", opacity: cargando ? 0.6 : 1 }}>{cargando ? "Un momento…" : modo === "entrar" ? "Entrar" : "Crear cuenta y entrar"}</button>
               <div className="text-xs" style={{ color: C.dim }}>Consejo: la primera vez, entra en el dispositivo que ya tiene tus datos; esa siembra la nube. Antes de todo, exporta un respaldo en Cierre por seguridad.</div>
