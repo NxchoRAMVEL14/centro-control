@@ -28,7 +28,7 @@ export async function sesionActual() {
 }
 
 export function alCambiarSesion(cb) {
-  const { data } = sb.auth.onAuthStateChange((_evento, sesion) => cb(sesion));
+  const { data } = sb.auth.onAuthStateChange((evento, sesion) => cb(sesion, evento));
   return () => data.subscription.unsubscribe();
 }
 
@@ -43,6 +43,17 @@ export async function registrar(email, password) {
   // Con "Confirm email" desactivado, signUp deja sesión iniciada de una vez.
   if (data.session) return { ok: true, sesion: true };
   return { ok: true, sesion: false, msg: "Cuenta creada. Ahora inicia sesión." };
+}
+
+export async function recuperar(email) {
+  const url = (typeof location !== "undefined") ? (location.origin + location.pathname) : undefined;
+  const { error } = await sb.auth.resetPasswordForEmail(email.trim(), { redirectTo: url });
+  return error ? { ok: false, msg: traducir(error.message) } : { ok: true };
+}
+
+export async function cambiarContrasena(password) {
+  const { error } = await sb.auth.updateUser({ password });
+  return error ? { ok: false, msg: traducir(error.message) } : { ok: true };
 }
 
 export async function salir() {

@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import {
   ListTodo, Timer, Briefcase, Target, FileDown, Plus, Play, Square,
   Circle, CheckCircle2, ChevronDown, ChevronRight, AlertTriangle, X,
-  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, FileUp, FileSpreadsheet, Eye, EyeOff
+  Trash2, Flag, Copy, Check, Zap, ArrowRight, Search, Link2, CalendarDays, Lightbulb, Download, Upload, Mic, Sparkles, CalendarPlus, Share2, HelpCircle, BookOpen, MessageSquare, Percent, User, MapPin, Camera, Navigation, Cloud, CloudOff, LogOut, Send, FileUp, FileSpreadsheet, Building2
 } from "lucide-react";
-import { entrar, registrar, salir, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos } from "./nube.jsx";
+import { entrar, registrar, salir, recuperar, cambiarContrasena, sesionActual, alCambiarSesion, leerNube, subirNube, tieneDatos } from "./nube.jsx";
 import { leerXLSX, mapearMonday, mapearPipeline } from "./importar.jsx";
 const nfEnteros = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
 import { ILUSTRACIONES } from "./ilustraciones.jsx";
@@ -38,6 +38,27 @@ const ETAPAS = [
   { id: "facturado", label: "Facturado", color: "#1F7A55" },
   { id: "perdido", label: "Perdido", color: C.dim },
 ];
+const CLASE_CLIENTE = {
+  clave: { label: "Cuenta clave", fondo: "#FCF6E1", borde: "#E7CE85", bg: "#FBF1D9", color: "#8A5A00" },
+  recurrente: { label: "Compra", fondo: "#EDF7F1", borde: "#B9E0CB", bg: "#E4F3EC", color: "#2F7A55" },
+  solocotiza: { label: "Solo cotiza", fondo: "#FDF3E7", borde: "#EBCBA0", bg: "#FBEBD6", color: "#9A5B1E" },
+  riesgo: { label: "Pide y no cierra", fondo: "#EFE7E7", borde: "#C9A9A9", bg: "#7A1E1E", color: "#F5E6E6" },
+};
+const clasificarCliente = (nombre, pipeline) => {
+  const norm = (s) => (s || "").trim().toLowerCase();
+  const n = norm(nombre);
+  const opps = (pipeline || []).filter((o) => norm(o.cliente) === n);
+  const ganadas = opps.filter((o) => o.etapa === "facturado").length;
+  const perdidas = opps.filter((o) => o.etapa === "perdido").length;
+  const activas = opps.filter((o) => !["facturado", "perdido"].includes(o.etapa)).length;
+  const total = opps.length;
+  let tipo = "normal";
+  if (ganadas >= 3) tipo = "clave";
+  else if (ganadas >= 1) tipo = "recurrente";
+  else if (total >= 4 && perdidas >= 2) tipo = "riesgo";
+  else if (total >= 1) tipo = "solocotiza";
+  return { tipo, ganadas, perdidas, activas, total };
+};
 const ACTIVAS = ["visita", "cotizado", "porcerrar"];
 const FLUJO = ["visita", "cotizado", "porcerrar", "oc", "pedido", "facturado"];
 const etapa = (id) => ETAPAS.find((e) => e.id === id) || ETAPAS[0];
@@ -359,11 +380,11 @@ const SYNC_TXT = {
 };
 const SYNC_COL = { local: "#8FA0B3", sincronizando: "#DE9B10", sincronizado: "#2F9467", offline: "#DE9B10", error: "#C94848" };
 
-function CuentaSheet({ sesion, sync, onSalir, onCerrar }) {
+function CuentaSheet({ sesion, sync, recuperando, onRecuperado, onSalir, onCerrar }) {
   const [modo, setModo] = useState("entrar");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
-  const [verPass, setVerPass] = useState(false);
+  const [nueva, setNueva] = useState("");
   const [msg, setMsg] = useState("");
   const [cargando, setCargando] = useState(false);
   const enviar = async () => {
@@ -373,6 +394,21 @@ function CuentaSheet({ sesion, sync, onSalir, onCerrar }) {
     setCargando(false);
     setMsg(r.ok ? (r.msg || "") : r.msg);
     if (r.ok && r.sesion === false) setModo("entrar");
+  };
+  const pedirReset = async () => {
+    if (!email.trim()) { setMsg("Escribe tu correo para enviarte el enlace de recuperación."); return; }
+    setCargando(true); setMsg("");
+    const r = await recuperar(email);
+    setCargando(false);
+    setMsg(r.ok ? "Listo: te enviamos un correo con un enlace para restablecer tu contraseña. Revisa tu bandeja y la carpeta de spam." : r.msg);
+  };
+  const guardarNueva = async () => {
+    if (nueva.length < 6) { setMsg("La nueva contraseña debe tener al menos 6 caracteres."); return; }
+    setCargando(true); setMsg("");
+    const r = await cambiarContrasena(nueva);
+    setCargando(false);
+    if (r.ok) { setMsg("¡Listo! Tu contraseña se actualizó. Ya puedes usarla."); setNueva(""); onRecuperado(); }
+    else setMsg(r.msg);
   };
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,28,38,0.55)" }} onClick={onCerrar}>
@@ -387,7 +423,17 @@ function CuentaSheet({ sesion, sync, onSalir, onCerrar }) {
             <div className="text-sm" style={{ color: C.tinta }}>{SYNC_TXT[sync]}</div>
           </div>
 
-          {sesion ? (
+          {recuperando ? (
+            <div className="space-y-3">
+              <div className="rounded-xl border p-3" style={{ borderColor: C.ambar, background: C.ambarBg }}>
+                <div className="text-sm font-semibold" style={{ color: "#8B2E2E" }}>Define tu nueva contraseña</div>
+                <div className="text-xs mt-0.5" style={{ color: C.dim }}>Abriste el enlace de recuperación. Escribe una contraseña nueva para tu cuenta.</div>
+              </div>
+              <input type="password" value={nueva} onChange={(e) => setNueva(e.target.value)} placeholder="Nueva contraseña (mínimo 6 caracteres)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
+              {msg ? <div className="text-xs" style={{ color: msg.includes("Listo") || msg.includes("actualizó") ? "#2F9467" : C.rojo }}>{msg}</div> : null}
+              <button onClick={guardarNueva} disabled={cargando} className="w-full py-3 rounded-xl font-semibold" style={{ background: C.ambar, color: "#fff", opacity: cargando ? 0.6 : 1 }}>{cargando ? "Guardando…" : "Guardar nueva contraseña"}</button>
+            </div>
+          ) : sesion ? (
             <div className="space-y-3">
               <div className="rounded-xl border p-3" style={{ borderColor: C.borde }}>
                 <div className="text-xs uppercase font-semibold" style={{ ...dsp, color: C.dim, letterSpacing: "0.08em" }}>Sesión iniciada</div>
@@ -405,14 +451,10 @@ function CuentaSheet({ sesion, sync, onSalir, onCerrar }) {
                 ))}
               </div>
               <input type="email" inputMode="email" autoCapitalize="none" autoCorrect="off" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Correo" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
-              <div className="relative">
-                <input type={verPass ? "text" : "password"} value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Contraseña (mínimo 6 caracteres)" className="w-full rounded-lg pl-3 pr-11 py-2.5 text-sm" style={inp} />
-                <button type="button" onClick={() => setVerPass((v) => !v)} aria-label={verPass ? "Ocultar contraseña" : "Mostrar contraseña"} title={verPass ? "Ocultar contraseña" : "Mostrar contraseña"} className="absolute inset-y-0 right-0 flex items-center px-3" style={{ color: C.dim }}>
-                  {verPass ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
+              <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Contraseña (mínimo 6 caracteres)" className="w-full rounded-lg px-3 py-2.5 text-sm" style={inp} />
               {msg ? <div className="text-xs" style={{ color: msg.includes("creada") ? "#2F9467" : C.rojo }}>{msg}</div> : null}
               <button onClick={enviar} disabled={cargando} className="w-full py-3 rounded-xl font-semibold" style={{ background: C.ambar, color: "#fff", opacity: cargando ? 0.6 : 1 }}>{cargando ? "Un momento…" : modo === "entrar" ? "Entrar" : "Crear cuenta y entrar"}</button>
+              {modo === "entrar" ? <button onClick={pedirReset} disabled={cargando} className="w-full text-xs font-semibold py-1" style={{ color: C.azul }}>¿Olvidaste tu contraseña?</button> : null}
               <div className="text-xs" style={{ color: C.dim }}>Consejo: la primera vez, entra en el dispositivo que ya tiene tus datos; esa siembra la nube. Antes de todo, exporta un respaldo en Cierre por seguridad.</div>
             </div>
           )}
@@ -648,6 +690,76 @@ function ImportarSheet({ titulo, descripcion, parsear, onImportar, onCerrar }) {
               </button>
             ) : null}
           </>) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ClientesSheet({ opps, onAbrirOpp, onCerrar }) {
+  const [q, setQ] = useState("");
+  const [filtro, setFiltro] = useState("todos");
+  const [abierto, setAbierto] = useState(null);
+  const clientes = useMemo(() => {
+    const map = {};
+    (opps || []).forEach((o) => { const c = (o.cliente || "").trim(); if (!c) return; (map[c] = map[c] || []).push(o); });
+    return Object.entries(map).map(([nombre, lista]) => {
+      const cl = clasificarCliente(nombre, opps);
+      const total = lista.reduce((s, o) => s + (o.monto || 0), 0);
+      return { nombre, lista, cl, total };
+    }).sort((a, b) => b.total - a.total);
+  }, [opps]);
+  const nq = q.trim().toLowerCase();
+  const filtrados = clientes.filter((c) => (filtro === "todos" || c.cl.tipo === filtro) && (!nq || c.nombre.toLowerCase().includes(nq)));
+  const CHIPS = [["todos", "Todos"], ["recurrente", "Compra"], ["solocotiza", "Solo cotiza"], ["riesgo", "Pide y no cierra"], ["clave", "Cuenta clave"]];
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(20,20,25,0.55)" }} onClick={onCerrar}>
+      <div className="rounded-t-2xl max-h-full overflow-y-auto w-full max-w-xl mx-auto" style={{ background: C.fondo }} onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b" style={{ background: C.bezel, borderColor: C.bezel2 }}>
+          <span style={{ ...dsp, letterSpacing: "0.12em" }} className="uppercase font-bold flex items-center gap-2"><Building2 size={16} style={{ color: C.ambar }} /><span style={{ color: "#fff" }}>Por cliente</span></span>
+          <button onClick={onCerrar}><X size={20} style={{ color: "#8FA0B3" }} /></button>
+        </div>
+        <div className="p-4 pb-8 space-y-2">
+          <div className="text-xs" style={{ color: C.dim }}>Tus oportunidades agrupadas por cliente. El color viene de su comportamiento: verde si te compra, ámbar si solo cotiza, rojo si pide mucho y no cierra, dorado si es cuenta clave.</div>
+          <div className="relative">
+            <Search size={15} style={{ color: C.dim }} className="absolute left-3 top-1/2 -translate-y-1/2" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cliente…" className="w-full rounded-lg pl-9 pr-3 py-2.5 text-sm" style={inp} />
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            {CHIPS.map(([id, lb]) => (
+              <button key={id} onClick={() => setFiltro(id)} className="text-xs px-2.5 py-1 rounded-full border font-semibold" style={{ borderColor: filtro === id ? C.ambar : C.borde, background: filtro === id ? C.ambarBg : "#fff", color: filtro === id ? C.ambar : C.dim }}>{lb}</button>
+            ))}
+          </div>
+          {filtrados.length === 0 ? <Vacio>Ningún cliente coincide. Los clientes se derivan de las oportunidades del pipeline.</Vacio> : null}
+          {filtrados.map((c) => {
+            const cfg = CLASE_CLIENTE[c.cl.tipo];
+            const exp = abierto === c.nombre;
+            return (
+              <div key={c.nombre} className="rounded-xl border overflow-hidden" style={{ borderColor: cfg ? cfg.borde : C.borde, background: cfg ? cfg.fondo : "#fff" }}>
+                <button onClick={() => setAbierto(exp ? null : c.nombre)} className="w-full text-left px-3 py-2.5 flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold truncate" style={{ color: C.tinta }}>{c.nombre}</div>
+                    <div className="text-xs" style={{ ...mono, color: C.dim }}>{fMXN(c.total)} · {c.lista.length} opp{c.cl.activas ? ` · ${c.cl.activas} activa${c.cl.activas > 1 ? "s" : ""}` : ""}{c.cl.ganadas ? ` · ${c.cl.ganadas} ganada${c.cl.ganadas > 1 ? "s" : ""}` : ""}</div>
+                  </div>
+                  {cfg ? <span className="text-xs px-2 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ color: cfg.color, background: cfg.bg }}>{cfg.label}</span> : null}
+                  <ChevronDown size={16} style={{ color: C.dim, transform: exp ? "rotate(180deg)" : "none" }} />
+                </button>
+                {exp ? (
+                  <div className="px-3 pb-2.5 space-y-1">
+                    {c.lista.slice().sort((a, b) => (b.monto || 0) - (a.monto || 0)).map((o) => (
+                      <button key={o.id} onClick={() => onAbrirOpp(o)} className="w-full text-left rounded-lg border px-2.5 py-2 flex items-center gap-2" style={{ borderColor: C.borde, background: "#fff" }}>
+                        <span className="flex-1 min-w-0">
+                          <span className="text-sm block truncate" style={{ color: C.tinta }}>{o.titulo || o.cliente}</span>
+                          <span className="text-xs" style={{ ...mono, color: C.dim }}>{etapa(o.etapa).label}{o.monto ? ` · ${fMXN(o.monto)}` : ""}{o.numCotizacion ? ` · ${o.numCotizacion}` : ""}</span>
+                        </span>
+                        <ChevronRight size={14} style={{ color: C.dim }} />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -899,6 +1011,7 @@ const MANUAL = [
     "Pedir estatus a vendedores: el botón agrupa tus oportunidades en curso por vendedor y arma un mensaje claro y numerado (cliente, monto, etapa, referencias y un renglón Estatus para llenar). Elige cuáles incluir y envíalo por WhatsApp, Compartir o Copiar. También puedes pedir el estatus de una sola oportunidad desde su ficha.",
     "Importar de Monday: el botón «Importar de Monday (Excel)» lee el .xlsx que descargas de tu tablero y crea oportunidades tomando cliente, título, monto (pesos o dólares), vendedor, cotización, OC, sucursal y notas. Compara con lo que ya tienes (por folio de Monday o número de cotización) y omite las repetidas; revisas la lista y marcas cuáles importar antes de confirmar.",
     "Importar pipeline (Excel): en Cierre, el botón «Importar pipeline (Excel)» hace lo inverso a exportar: lee el .xlsx que esta app genera en «Pipeline en Excel» y reconstruye las oportunidades con todos sus datos (etapa, montos, folios y fechas, comisión, vendedor, marca, plaza y notas). Sirve para restaurar o mover tu pipeline; las que ya tienes no se duplican.",
+    "Ver por cliente: el botón «Ver por cliente» agrupa tus oportunidades por cliente y colorea cada ficha según su comportamiento: verde (Compra) si tiene ventas facturadas, ámbar (Solo cotiza) si tiene oportunidades pero aún ninguna cerrada, rojo (Pide y no cierra) si acumula pérdidas sin ganar, y dorado (Cuenta clave) si te ha comprado varias veces. Filtra con los chips y toca un cliente para ver sus oportunidades; toca una para abrirla.",
     "Cuando cobres, avanza la oportunidad a Facturado. Las fechas de OC, pedido y factura se sellan solas al avanzar de etapa (y puedes editarlas).",
     "El buscador encuentra por cliente, vendedor, marca, plaza y por número de cotización, OC, pedido o factura. Los chips filtran por etapa (Todas al inicio, vista por defecto). Las tarjetas se ordenan por etapa y, dentro de cada etapa, de mayor a menor monto.",
   ]},
@@ -910,6 +1023,7 @@ const MANUAL = [
   { id: "cuenta", t: "Cuenta y sincronización en la nube", c: [
     "Abre Cuenta con el icono de nube (☁️) de la barra superior. Su color te dice el estado: verde = sincronizado, ámbar = sincronizando o sin conexión, gris = sin cuenta.",
     "Crea tu cuenta con correo y contraseña (mínimo 6 caracteres) y entra. Con la misma cuenta en tu celular y tu PC verás los mismos datos.",
+    "¿Olvidaste tu contraseña? En la pantalla de inicio de sesión, toca «¿Olvidaste tu contraseña?», escribe tu correo y recibirás un enlace por correo. Al abrirlo desde este mismo dispositivo, la app te pedirá una contraseña nueva.",
     "La primera vez, entra en el dispositivo que ya tiene tus datos: ese los sube a la nube. En los demás dispositivos, al entrar, se descargan.",
     "Importante: antes de iniciar sesión por primera vez, exporta un respaldo en Cierre. Es tu red de seguridad.",
     "Funciona sin internet: los cambios se guardan en el dispositivo y suben a la nube en cuanto vuelve la conexión.",
@@ -944,6 +1058,7 @@ const MANUAL = [
     "Mejoras de la app: anota cualquier fricción; el botón Copiar lista para Claude arma el mensaje exacto para pedir la siguiente versión.",
   ]},
   { id: "vers", t: "Novedades por versión", c: [
+    "v3.8 — Dos mejoras traídas de la experiencia de Brida: (1) Vista «Por cliente» que agrupa tus oportunidades por cliente y colorea cada ficha según su comportamiento (compra, solo cotiza, pide y no cierra, cuenta clave). (2) «¿Olvidaste tu contraseña?» en el inicio de sesión, con enlace de recuperación por correo.",
     "v3.7 — En Cierre ahora puedes importar el propio Excel del pipeline (lo inverso a exportarlo): reconstruye las oportunidades con todos sus datos, ideal para restaurar o mover tu pipeline. No duplica lo que ya tienes.",
     "v3.6 — Nuevo importador: sube el Excel exportado de Monday y crea las oportunidades automáticamente (cliente, título, monto en pesos o dólares, vendedor, cotización, OC, sucursal y notas). Detecta y omite las que ya tienes para no duplicarlas.",
     "v3.5 — Ahora puedes duplicar una oportunidad desde su ficha: crea una copia con los mismos datos y abre el editor para cambiar solo lo necesario. Ideal para cargar rápido oportunidades parecidas.",
@@ -1088,7 +1203,7 @@ function PantallaInicio({ vencidas, deHoy, acciones, totCotizado, numCotizado, t
           </button>
           <button onClick={onEntrar} className="w-full py-3.5 rounded-xl font-bold uppercase" style={{ ...dsp, letterSpacing: "0.14em", background: C.ambar, color: "#fff" }}>Entrar al tablero</button>
           <button onClick={onManual} className="w-full text-center text-xs mt-3" style={{ color: "#5E6E7E" }}>Manual de uso (?)</button>
-          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v3.7</div>
+          <div className="text-center text-xs mt-2" style={{ ...mono, color: "#4A5A6C" }}>v3.8</div>
         </div>
       </div>
     </div>
@@ -1279,6 +1394,8 @@ export default function App() {
   const [verSeguimiento, setVerSeguimiento] = useState(false);
   const [verImportar, setVerImportar] = useState(false);
   const [verImportarPipe, setVerImportarPipe] = useState(false);
+  const [verClientes, setVerClientes] = useState(false);
+  const [recuperando, setRecuperando] = useState(false);
   const [verVisitas, setVerVisitas] = useState(false);
   const [visitaEdit, setVisitaEdit] = useState(null);
   const [mesCom, setMesCom] = useState("");
@@ -1330,7 +1447,7 @@ export default function App() {
   // Sesión actual + escucha de cambios
   useEffect(() => {
     sesionActual().then((s) => setSesion(s));
-    return alCambiarSesion((s) => setSesion(s));
+    return alCambiarSesion((s, ev) => { setSesion(s); if (ev === "PASSWORD_RECOVERY") { setRecuperando(true); setVerCuenta(true); } });
   }, []);
 
   // Sincronización inicial cuando hay sesión y el estado local ya cargó
@@ -1923,6 +2040,9 @@ export default function App() {
               ))}
             </div>
 
+            <button onClick={() => setVerClientes(true)} className="w-full mt-2 py-2.5 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.borde, background: C.panel, color: C.tinta }}>
+              <Building2 size={15} /> Ver por cliente
+            </button>
             <button onClick={() => setVerComision(true)} className="w-full mt-2 py-2.5 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2" style={{ borderColor: C.verde, background: C.verdeBg, color: "#1F7A55" }}>
               <Percent size={15} /> Calcular comisiones
             </button>
@@ -2161,7 +2281,7 @@ export default function App() {
                 </button>
               )}
             </div>
-            <div className="text-xs text-center mt-4" style={{ ...mono, color: C.dim }}>Centro de Control v3.7 · PWA · nube</div>
+            <div className="text-xs text-center mt-4" style={{ ...mono, color: C.dim }}>Centro de Control v3.8 · PWA · nube</div>
           </div>
         )}
 
@@ -2374,7 +2494,8 @@ export default function App() {
       {verSeguimiento && <SeguimientoSheet opps={data.pipeline} onCerrar={() => setVerSeguimiento(false)} />}
       {verImportar && <ImportarSheet titulo="Importar de Monday" descripcion="Sube el Excel (.xlsx) que descargaste de tu tablero de Monday. Tomo cliente, título, monto (pesos o dólares), vendedor, cotización, OC, sucursal y notas. Las que ya tienes en tu pipeline (mismo folio de Monday o de cotización) se omiten automáticamente." parsear={(hojas) => mapearMonday(hojas, data.pipeline, data.tipoCambio || 0)} onImportar={importarOpps} onCerrar={() => setVerImportar(false)} />}
       {verImportarPipe && <ImportarSheet titulo="Importar pipeline (Excel)" descripcion="Sube el Excel que esta app genera en «Pipeline en Excel». Reconstruyo las oportunidades con sus datos: etapa, montos, folios y fechas de cotización, OC, pedido y factura, comisión, vendedor, marca, plaza y notas. Las que ya están en tu pipeline (por cotización o por cliente y título) se omiten." parsear={(hojas) => mapearPipeline(hojas, data.pipeline, data.tipoCambio || 0, ETAPAS)} onImportar={importarOpps} onCerrar={() => setVerImportarPipe(false)} />}
-      {verCuenta && <CuentaSheet sesion={sesion} sync={sync} onSalir={cerrarSesion} onCerrar={() => setVerCuenta(false)} />}
+      {verClientes && <ClientesSheet opps={data.pipeline} onAbrirOpp={(o) => setOppEdit(o)} onCerrar={() => setVerClientes(false)} />}
+      {verCuenta && <CuentaSheet sesion={sesion} sync={sync} recuperando={recuperando} onRecuperado={() => setRecuperando(false)} onSalir={cerrarSesion} onCerrar={() => { if (!recuperando) setVerCuenta(false); }} />}
       {verVisitas && <VisitasSheet visitas={data.visitas || []} opps={data.pipeline} onNueva={() => setVisitaEdit({})} onEditar={(v) => setVisitaEdit(v)} onCheckin={checkinVisita} onCerrar={() => setVerVisitas(false)} />}
       {visitaEdit !== null && <VisitaEditor visita={visitaEdit} opps={data.pipeline} onGuardar={guardarVisita} onEliminar={() => delVisita(visitaEdit.id)} onCheckin={obtenerUbicacion} onCerrar={() => setVisitaEdit(null)} />}
       {verAsis && <AsistenteSheet onCerrar={() => setVerAsis(false)} onAplicar={aplicarAsistente} />}

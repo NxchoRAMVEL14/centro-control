@@ -1,6 +1,6 @@
 {
   "name": "centro-control-comercial",
-  "version": "3.7.0",
+  "version": "3.8.0",
   "description": "PWA de gestion comercial: pendientes, tiempo, pipeline, metas y comisiones",
   "scripts": {
     "build": "bash build.sh"
