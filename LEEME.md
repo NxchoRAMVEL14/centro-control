@@ -1,0 +1,198 @@
+# Mesa · Menús de la casa
+
+PWA para planear desayuno, almuerzo, comida, colación y cena de toda la familia,
+con despensa, lista del súper automática, entrenamiento y seguimiento de peso,
+medidas y agua.
+
+## Manual de usuario
+
+El manual vive **dentro de la app**: botón **?** arriba a la derecha, en
+cualquier pantalla. Tiene ocho secciones (primeros pasos, el día a día, la tira
+de la semana, súper y despensa, entrenamiento, recetario, progreso y respaldos,
+y de dónde salen los números). Se puso ahí a propósito: un manual en un archivo
+aparte no se consulta nunca.
+
+Ese mismo botón, pestaña *Novedades*, tiene las notas de cada versión. También
+están en `NOTAS-DE-VERSION.md`.
+
+## Ilustraciones
+
+Los platillos y los ejercicios traen dibujo de referencia. Están **dibujados con
+código** dentro de la app, no son imágenes descargadas: así funcionan sin
+conexión, se ven nítidos en cualquier pantalla y no dependen de enlaces externos.
+Son esquemas para reconocer algo de un vistazo, no fotografías.
+
+Si agregas recetas propias, reciben dibujo automáticamente: la app adivina la
+familia del platillo por el nombre (*"Tacos de la abuela"* → tacos) y si no
+reconoce nada usa un plato genérico.
+
+## Registrar comida fuera del menú
+
+En **Hoy**, el botón *+ Agregar lo que comí* registra cualquier cosa que no
+estuviera en el plan. Tres vías: buscar en la lista de 140 alimentos comunes
+que funciona sin conexión, escanear el código de barras, o escribirlo a mano.
+Lo registrado suma a los totales del día igual que el menú planeado.
+
+Al registrar se ajusta **cuánto** se comió: las calorías y los macros se
+recalculan proporcionalmente. Los botones de ½, 1, 1½, 2 y 3 son múltiplos de la
+porción del alimento, así que funcionan igual con piezas que con gramos.
+
+El escáner lee **códigos de barras y también QR**. Un QR de producto trae una
+liga cuyo camino codifica el identificador (`/01/{GTIN}`); la app lo extrae, le
+quita el relleno de ceros que exige el estándar GS1 Digital Link y prueba las
+variantes hasta acertar. Si el QR es sólo publicidad y no trae identificador
+—muy común en empaques chicos como los sobres individuales— la app lo detecta,
+dice a qué página apuntaba y ofrece un botón para capturar el producto a mano,
+con la marca ya escrita a partir del dominio del QR.
+
+El escáner consulta **Open Food Facts**, base abierta de productos sin llave de
+API. Los datos los aportan voluntarios, así que pueden estar incompletos: la
+app siempre los muestra para revisarlos antes de guardar. Cada producto
+consultado se guarda en el teléfono, así el segundo escaneo del mismo código no
+necesita internet.
+
+## Tipos de dieta
+
+En **La semana**, botón *Cambiar* de la tarjeta superior. Seis perfiles que
+ajustan el reparto de macronutrientes del día y filtran qué platillos entran al
+menú generado. Antes de aplicar uno, la app enseña cuántos platillos del
+recetario caben, tiempo por tiempo.
+
+El recetario es de cocina mexicana casera, así que las dietas muy bajas en
+hidratos dejan pocas opciones: la cetogénica deja 17 de 95. Se agregaron 22
+platillos bajos en carbohidratos para que sea viable, pero conviene sumar
+recetas propias si se va a sostener.
+
+## Equivalentes
+
+Reparto por grupos del **Sistema Mexicano de Alimentos Equivalentes**, estimado
+desde los ingredientes de cada platillo. Aparece en Hoy para el día completo y
+en el detalle de cada receta por porción. Es el lenguaje que usan los
+nutriólogos en México; sirve para entenderse con ellos, no para sustituir un
+plan.
+
+## Buzón de ideas
+
+Botón **?** → pestaña *Mis ideas*. Sirve para anotar mejoras en el momento en
+que se te ocurren usando la app. Cada idea lleva la pantalla donde aplica —se
+propone sola según dónde estabas— y qué tanto urge. El botón *Copiar todas las
+pendientes* las exporta agrupadas por prioridad, listas para pegar donde se
+vayan a pedir los cambios. Cada idea pasa por *por pedir*, *ya la pedí* y
+*ya está*.
+
+## Modo recuperación
+
+Se activa en **Progreso → Familia**. Mientras está encendido, los
+entrenamientos programados no suman a la meta del día y la app deja de señalar
+cuando se come por debajo de ella. Las metas siguen visibles como referencia.
+
+Existe para no señalar a alguien convaleciente por comer poco. Durante una
+recuperación quien decide qué y cuánto se come es el médico que atiende, no la
+app.
+
+## Entrenamiento
+
+La pestaña **Entreno** tiene tres partes.
+
+- **Mi semana**: los días fijos en que entrenas. Al registrarlos, la meta de
+  comida de esos días sube sola. Si juegas voleibol los martes, el martes la
+  app te pide más comida que el lunes, sin que ajustes nada.
+- **Rutina**: genera un plan según dónde entrenas (casa o gimnasio), tu
+  objetivo, los días por semana y cuánto tiempo tienes. Cada ejercicio trae
+  series, repeticiones y una nota de técnica. El botón *Otros ejercicios*
+  vuelve a sortear sin cambiar la configuración.
+- **Bitácora**: registro de lo que en realidad entrenaste, cruzado con lo que
+  comiste ese día. La pregunta que responde no es "¿comí de más?" sino
+  "¿comí suficiente para lo que hice?".
+
+## Cómo funciona la despensa
+
+La pantalla **Súper** tiene dos pestañas.
+
+- **Por comprar**: la lista de la semana, ya descontando lo que hay en despensa.
+  Cada renglón muestra sólo lo que falta, y si tienes una parte lo indica.
+  Al tachar lo que echaste al carrito, el botón *Guardar en la despensa* pasa
+  esas cantidades al inventario de un golpe.
+- **En despensa**: lo que hay en casa, agrupado por pasillo, con botones para
+  subir o bajar cantidades.
+
+El ciclo se cierra solo: cuando marcas una comida como hecha en **Hoy**, sus
+ingredientes se descuentan de la despensa. Si la desmarcas, regresan — y regresa
+exactamente lo que se consumió, nunca más de lo que había.
+
+## Subir a GitHub Pages
+
+1. Crea un repositorio nuevo (por ejemplo `Mesa`).
+2. Arrastra **todo el contenido de esta carpeta** a la interfaz web de GitHub.
+   Van los archivos sueltos, no la carpeta.
+3. GitHub te preguntará si quieres reemplazar los archivos que ya existen. Acepta.
+4. En **Settings → Pages**, elige la rama `main` y la carpeta `/ (root)`.
+5. Espera 1–2 minutos y abre `https://TU-USUARIO.github.io/Mesa/`.
+
+El archivo `.nojekyll` es indispensable: sin él, GitHub Pages intenta procesar
+el sitio con Jekyll y el despliegue se atora.
+
+## Instalar en el teléfono
+
+Abre la liga en Chrome → menú de tres puntos → **Agregar a pantalla de inicio**.
+Queda como app independiente y funciona sin internet.
+
+## Dónde viven los datos
+
+Todo se guarda en el navegador del dispositivo (`localStorage`). No sale nada a
+ningún servidor. Descarga un respaldo desde **Familia → Descargar respaldo** de
+vez en cuando.
+
+## Cuando quieras conectar Supabase
+
+Toda la persistencia pasa por el objeto `almacen` en `src/nucleo.js`, con dos
+métodos: `leer(clave, porDefecto)` y `guardar(clave, valor)`. Ya son asíncronos.
+Para migrar a la nube basta reemplazar el cuerpo de esos dos métodos por
+llamadas a Supabase; ningún componente cambia.
+
+## Recompilar tras editar el código
+
+```
+npm install react react-dom esbuild
+npx esbuild src/app.jsx --bundle --minify --format=iife --target=es2018 \
+  --jsx=automatic --outfile=app.js --define:process.env.NODE_ENV='"production"'
+```
+
+Si cambias `sw.js` o los archivos en caché, sube el número de versión en
+`const CACHE = 'mesa-v9'` para que los teléfonos tomen la versión nueva.
+
+## Si la página no abre
+
+- **Revisa mayúsculas en la URL.** Las rutas de GitHub Pages distinguen entre
+  mayúsculas y minúsculas: si el repo es `Mesa-app`, la liga es
+  `https://TU-USUARIO.github.io/Mesa-app/`, no `/mesa-app/`.
+- **404** significa que Pages no está publicado todavía o la rama está mal.
+  Revisa **Settings → Pages**.
+- **ERR_CONNECTION_TIMED_OUT** no es problema del repo: la petición nunca llegó.
+  Suele ser la red bloqueando el dominio `*.github.io`. Pruébalo con datos
+  móviles para descartarlo.
+- Si ya cargó antes y ves la versión vieja, es el service worker. Recarga con
+  Ctrl+Shift+R, o desinstala y reinstala la PWA.
+
+## Sobre las cifras nutricionales
+
+El gasto energético se estima con la ecuación de **Mifflin-St Jeor (1990)**,
+multiplicada por un factor de actividad. La proteína se fija en 1.4 g/kg, la
+grasa en 27 % de la energía y el resto en hidratos. Los valores de cada
+platillo son aproximaciones de tablas de composición de alimentos de uso común.
+
+El gasto de cada entrenamiento se estima con **METs** del *Compendium of
+Physical Activities* (Ainsworth y cols.), la referencia estándar del campo.
+Un MET equivale aproximadamente a gastar 1 kcal por kilo de peso cada hora en
+reposo. Al calcular la sesión se resta 1 MET, porque ese reposo ya viene
+contado en el metabolismo basal; sin esa resta el día se sobreestima.
+
+Por eso el nivel de actividad del perfil debe describir **sólo tu día normal**
+sin los entrenamientos: si contaras el voleibol ahí y además lo registraras en
+la pestaña Entreno, se contaría dos veces.
+
+Son cifras **de referencia**, útiles para orientarse y llevar orden. No son una
+prescripción y no sustituyen la valoración de un nutriólogo, sobre todo si
+alguien en casa tiene alguna condición de salud. Lo mismo aplica a las rutinas:
+si un ejercicio te causa dolor, no molestia de esfuerzo sino dolor, sáltalo y
+consúltalo con un profesional.

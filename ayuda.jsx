@@ -1,0 +1,364 @@
+import React, { useState } from 'react';
+import { PantallaMejoras } from './mejoras.jsx';
+
+export const VERSION = '1.6.0';
+
+// ── Manual de usuario ─────────────────────────────────────────────────────
+// Se guarda dentro de la app a propósito: un manual en un archivo aparte no
+// se consulta nunca. Aquí está a dos toques desde cualquier pantalla.
+
+const MANUAL = [
+  {
+    t: 'Primeros pasos',
+    icono: '◈',
+    p: [
+      ['Registra a tu familia', 'Entra a **Progreso → Familia** y agrega a cada persona que come en casa. Necesitas nombre, sexo, fecha de nacimiento, peso y estatura. Con esos datos la app calcula cuánta comida necesita cada uno y ajusta el tamaño de las porciones.'],
+      ['Quién ve sus números', 'La primera persona de la lista es la dueña de la app: sus metas son las que aparecen en la pantalla Hoy. Las demás cuentan para las porciones y tienen su propio registro de medidas.'],
+      ['Genera tu primer menú', 'Ve a **Semana** y toca *Generar menú*. Puedes planear una semana, un mes o un año completo. Todo se puede cambiar después.'],
+      ['Instálala en el teléfono', 'Abre la liga en Chrome, menú de tres puntos, *Agregar a pantalla de inicio*. Queda como app independiente y funciona sin internet.'],
+    ],
+  },
+  {
+    t: 'El día a día',
+    icono: '☀',
+    p: [
+      ['Marca lo que comes', 'En **Hoy** aparecen los cinco tiempos. Toca el cuadro de la izquierda cuando termines de comer algo. Sólo lo que marcas cuenta para tus totales del día.'],
+      ['Si comiste otra cosa', 'El botón **+ Agregar lo que comí** registra lo que no estaba en el plan: algo de la calle, un producto empacado o lo que se te ocurra. Cuenta igual para tus totales.'],
+      ['Toca el platillo para verlo', 'Al tocar el nombre se abre la receta con los ingredientes ya multiplicados por el número de personas que comen. Desde ahí también puedes cambiarlo por otro platillo.'],
+      ['Los vasos de agua', 'Toca el vaso número que llevas y se llenan todos los anteriores. Si te equivocas, toca el mismo vaso otra vez para bajar uno. La meta se calcula con 35 ml por kilo de peso.'],
+      ['Días pasados y futuros', 'Las flechas de arriba te mueven de día. Puedes registrar algo que olvidaste ayer o revisar qué toca mañana.'],
+    ],
+  },
+  {
+    t: 'Registrar comida fuera del menú',
+    icono: '✚',
+    p: [
+      ['Para qué sirve', 'La vida real no siempre sigue el menú: comiste en la calle, te invitaron, o estás en dieta especial por alguna razón. El botón **+ Agregar lo que comí** en la pantalla Hoy registra cualquier cosa, esté o no en el plan.'],
+      ['Tres formas de hacerlo', 'Puedes **buscar en la lista** de alimentos comunes que trae la app y funciona sin internet; **escanear el código de barras** de un producto empacado; o **escribirlo a mano** si no aparece en ningún lado.'],
+      ['Ajusta la cantidad', 'Todo lo que registras pasa por una pantalla donde pones **cuánto** comiste. Las calorías y los macros se recalculan solos: si la lista trae una tortilla de 65 kcal y comiste tres, quedan 195. Los botones de ½, 1, 1½, 2 y 3 son múltiplos de la porción, así que sirven igual para piezas que para gramos.'],
+      ['Lo que registras seguido', 'La app recuerda los últimos doce alimentos que registraste, con la cantidad que usaste. Si siempre comes tres tortillas, la próxima vez ya vienen las tres puestas.'],
+      ['El escáner', 'Usa la cámara del teléfono. Si tu navegador no la soporta o no das permiso, puedes teclear el código. Los datos vienen de **Open Food Facts**, una base abierta hecha por voluntarios: revisa las cifras contra la etiqueta antes de guardar, porque pueden estar incompletas o equivocadas.'],
+      ['Productos que no aparecen', 'Es normal con productos mexicanos poco comunes. Cuando pase, captúralo a mano una vez y queda en tus frecuentes. Los productos que sí encuentra se guardan en el teléfono, así que la segunda vez que escanees el mismo código funciona sin internet.'],
+    ],
+  },
+  {
+    t: 'Modo recuperación',
+    icono: '⚕',
+    p: [
+      ['Cuándo usarlo', 'Cuando estés convaleciente, enfermo o con indicación médica de comer distinto. Se activa en **Progreso → Familia**.'],
+      ['Qué cambia', 'Los entrenamientos programados dejan de sumar a la meta del día, y la app deja de señalarte cuando comes por debajo de ella. Las metas siguen visibles como referencia, nada se borra.'],
+      ['Por qué existe', 'Sin este modo, la app te diría que "quedaste bastante por debajo de lo que pedía este día" justo cuando estás recuperándote de algo y comiendo lo que puedes. Ese mensaje no ayuda a nadie en esa situación.'],
+      ['Sigue a tu médico, no a la app', 'Durante una recuperación, quién decide qué y cuánto comes es la persona que te está atendiendo. Mesa sirve para llevar registro de lo que comiste, no para decirte qué comer.'],
+    ],
+  },
+  {
+    t: 'La tira de la semana',
+    icono: '▦',
+    p: [
+      ['Cómo leerla', 'Siete columnas, una por día. Cinco filas, una por tiempo de comida. Cada cuadrito es una comida: **azul fuerte** significa que ya la comiste, **azul claro** que está planeada y **punteado** que no hay nada asignado.'],
+      ['Para qué sirve', 'De un vistazo ves cómo va tu semana sin leer un solo número. Los huecos y los días incompletos saltan a la vista.'],
+      ['Cambiar un platillo', 'Toca cualquier cuadrito para abrir esa comida y sustituirla.'],
+      ['Variedad', 'Al generar el menú eliges cada cuántos días puede repetirse un platillo: 5 días repite más y simplifica las compras, 20 días da máxima variedad.'],
+    ],
+  },
+  {
+    t: 'Súper y despensa',
+    icono: '⛬',
+    p: [
+      ['Las dos pestañas', '**Por comprar** es la lista de la semana. **En despensa** es lo que ya tienes en casa. La lista siempre descuenta la despensa: si tienes la mitad del arroz que pide el menú, sólo te pide la otra mitad.'],
+      ['Del carrito a la despensa', 'Ve tachando lo que echas al carrito. Al terminar, el botón *Guardar en la despensa* pasa todas esas cantidades al inventario de una vez.'],
+      ['Se descuenta solo', 'Cuando marcas una comida como hecha en Hoy, sus ingredientes bajan de la despensa. Si desmarcas la comida, regresan exactamente lo que se había consumido.'],
+      ['Copiar la lista', 'El botón *Copiar* pone la lista completa en el portapapeles, agrupada por pasillo, para pegarla en WhatsApp o donde la necesites.'],
+    ],
+  },
+  {
+    t: 'Entrenamiento',
+    icono: '⚡',
+    p: [
+      ['Mi semana', 'Registra los días fijos en que entrenas. Esos días la app **sube tu meta de comida automáticamente**. Si juegas voleibol los martes, el martes te pide más comida que el lunes sin que ajustes nada.'],
+      ['Ojo con la actividad del perfil', 'El nivel de actividad de tu perfil debe describir **sólo tu día normal**: trabajo, casa, traslados. Los entrenamientos se suman aparte. Si los cuentas en los dos lados, se contarían doble.'],
+      ['Rutina', 'Elige dónde entrenas (casa o gimnasio), tu objetivo, cuántos días y cuánto tiempo tienes. La app arma las sesiones con ejercicios que existan en ese lugar: si eliges casa, nunca te va a pedir una polea. Cada ejercicio trae dibujo, series, repeticiones y una nota de técnica.'],
+      ['Bitácora', 'Registra lo que en realidad entrenaste y cómo te sentiste. La app lo cruza con lo que comiste ese día y te avisa si te quedaste corto de comida en un día que entrenaste.'],
+    ],
+  },
+  {
+    t: 'Recetario',
+    icono: '☰',
+    p: [
+      ['Busca por ingrediente', 'El buscador encuentra platillos por nombre y también por lo que llevan. Escribe *nopal* y salen todos los que lo usan.'],
+      ['Filtra por tiempo', 'Los botones de arriba muestran sólo los platillos aptos para desayuno, almuerzo, comida, colación o cena.'],
+      ['Agrega tus recetas', 'El botón *Agregar mi propia receta* guarda las de casa. Anota los ingredientes **por una porción**: la app multiplica según quién coma. Si no conoces el aporte exacto, una aproximación sirve.'],
+      ['Sobre los dibujos', 'Las ilustraciones son referencias de la forma del platillo, no fotos del resultado. Sirven para reconocerlo rápido en una lista larga.'],
+    ],
+  },
+  {
+    t: 'Progreso y respaldos',
+    icono: '◔',
+    p: [
+      ['Medidas', 'Registra peso, cintura, cadera y pecho cuando quieras. Deja en blanco lo que no midas ese día. La gráfica necesita al menos dos registros para dibujar la tendencia.'],
+      ['La tendencia importa más que el número', 'Pesarte siempre a la misma hora y en las mismas condiciones hace que la línea sea útil. El número de un solo día varía por cosas que no tienen que ver con tu progreso.'],
+      ['Dónde viven tus datos', 'Todo se guarda **en este dispositivo**, no en un servidor. Nada sale de tu teléfono. Eso también significa que si borras los datos del navegador o desinstalas la app, se pierde.'],
+      ['Haz respaldos', 'En **Progreso → Familia** está el botón *Descargar respaldo*. Genera un archivo con todo. Hazlo de vez en cuando y guárdalo en Drive o donde acostumbres.'],
+      ['Cada dispositivo es independiente', 'Si usas la app en el teléfono y en la computadora, cada uno tiene sus propios datos. Elige uno como el principal.'],
+    ],
+  },
+  {
+    t: 'Anotar mejoras',
+    icono: '✎',
+    p: [
+      ['Dónde está', 'En este mismo botón de ayuda, pestaña **Mis ideas**. Sirve para anotar lo que se te ocurra mientras usas la app, en el momento en que se te ocurre.'],
+      ['Por qué anotarlas ahí', 'Las ideas llegan usando la app: en el súper, cocinando, entrenando. Si esperas a llegar a la computadora, se olvidan. Anótala aunque sea a medias.'],
+      ['Cómo se organizan', 'Cada idea lleva la pantalla donde aplica —se propone sola según dónde estabas— y qué tanto te urge: *me estorba*, *me ayudaría* o *algún día*.'],
+      ['Sacarlas de la app', 'El botón **Copiar todas las pendientes** las pone en el portapapeles agrupadas por prioridad, listas para pegar donde vayas a pedir los cambios.'],
+      ['Llevar la cuenta', 'Cada idea pasa por tres estados: *por pedir*, *ya la pedí* y *ya está*. Así no vuelves a pedir lo mismo dos veces ni pierdes de vista lo que falta.'],
+    ],
+  },
+  {
+    t: 'Tipos de dieta',
+    icono: '◑',
+    p: [
+      ['Dónde se cambia', 'En **La semana**, con el botón *Cambiar* de la tarjeta de arriba. Hay seis perfiles: equilibrada, alta en proteína, baja en carbohidratos, cetogénica, mediterránea y una donde capturas los números que te haya dado tu nutriólogo.'],
+      ['Qué cambia cada una', 'Dos cosas: cómo se reparte la energía del día entre proteína, grasa e hidratos; y qué platillos puede usar el generador. Una dieta baja en carbohidratos no va a armarte un menú de tacos con arroz.'],
+      ['Mira la cobertura antes de decidir', 'Al elegir una dieta la app te dice **cuántos platillos del recetario caben en ella**, tiempo por tiempo. Si un tiempo queda con menos de cinco opciones, te avisa: van a repetirse seguido. El recetario es de cocina mexicana casera, que gira sobre maíz y frijol, así que las dietas muy bajas en hidratos dejan pocas opciones.'],
+      ['Si eliges una dieta restringida', 'Agrega recetas tuyas en el Recetario que cumplan. Cada platillo que agregues entra al filtro automáticamente según sus propios números.'],
+      ['La cetogénica no es una dieta cualquiera', 'Nació como tratamiento para epilepsia refractaria y hoy se usa en algunos contextos metabólicos concretos. No es un patrón de mantenimiento general. La app te deja usarla, pero conviene que la revise un profesional antes de sostenerla, sobre todo si tomas algún medicamento.'],
+    ],
+  },
+  {
+    t: 'Equivalentes',
+    icono: '⚖',
+    p: [
+      ['Qué son', 'El **Sistema Mexicano de Alimentos Equivalentes** agrupa los alimentos por lo que aportan, de modo que puedas intercambiar unos por otros dentro del mismo grupo. Una tortilla y medio bolillo son ambos 1 equivalente de cereales sin grasa: 70 kcal, 2 g de proteína y 15 g de hidratos.'],
+      ['Dónde los ves', 'En **Hoy** aparece el reparto por grupos de lo que llevas comido, y en el detalle de cada receta los equivalentes de una porción.'],
+      ['Para qué sirven', 'Es el lenguaje que usan los nutriólogos en México. Si alguna vez vas a consulta y te dan un plan en equivalentes, aquí puedes ver cómo va tu día en esos mismos términos.'],
+      ['Qué tan exactos son', 'La app los estima a partir de los ingredientes de cada platillo, no de las tablas completas del sistema. Sirven para orientarse y para entenderse con quien sí arma el plan, no como plan en sí mismos.'],
+    ],
+  },
+  {
+    t: 'Sobre los números',
+    icono: '⚖',
+    p: [
+      ['De dónde salen', 'El gasto en reposo se estima con la ecuación de **Mifflin-St Jeor (1990)**, la más usada en la práctica clínica para adultos sanos, multiplicada por tu factor de actividad. El gasto de cada entrenamiento se calcula con **METs** del *Compendium of Physical Activities* (Ainsworth y cols.).'],
+      ['Cómo se reparten', 'La proteína se fija en 1.4 g por kilo de peso, la grasa en 27 % de la energía del día y el resto va a hidratos. Es un reparto orientado a salud general y variedad.'],
+      ['Qué tan exactos son', 'Son **estimaciones de referencia**. Las ecuaciones son promedios poblacionales y los valores de cada platillo son aproximaciones de tablas de composición de alimentos. Sirven para llevar orden y notar tendencias, no para medir con precisión.'],
+      ['Lo que no son', 'No son una prescripción y no sustituyen la valoración de un nutriólogo, sobre todo si alguien en casa tiene alguna condición de salud. Con las rutinas aplica lo mismo: si un ejercicio te causa dolor, no molestia de esfuerzo sino dolor, sáltalo y consúltalo con un profesional.'],
+    ],
+  },
+];
+
+// ── Notas de versión ──────────────────────────────────────────────────────
+const NOTAS = [
+  {
+    v: '1.6.0', fecha: '17 de agosto de 2026', titulo: 'Tipos de dieta y equivalentes',
+    nuevo: [
+      'Seis perfiles de dieta: equilibrada, alta en proteína, baja en carbohidratos, cetogénica, mediterránea y una para capturar el plan que te haya dado tu nutriólogo.',
+      'Cada dieta cambia el reparto de macronutrientes del día y filtra qué platillos puede usar el generador.',
+      'Antes de aplicar una dieta, la app enseña cuántos platillos del recetario caben en ella, tiempo por tiempo, y avisa si alguno queda con menos de cinco opciones.',
+      '22 platillos bajos en carbohidratos, para que las dietas restringidas tengan de dónde elegir. El recetario pasó de 73 a 95.',
+      'Equivalentes del Sistema Mexicano de Alimentos Equivalentes: el reparto por grupos del día en Hoy, y los de una porción en cada receta.',
+    ],
+    arreglos: [
+      'Los números capturados en la dieta personalizada se perdían si se tocaba otro perfil antes de guardar. Ahora se conservan siempre.',
+    ],
+    detalles: [
+      'La cobertura se enseña antes de decidir porque el recetario es de cocina mexicana casera, que gira sobre maíz y frijol: la cetogénica deja sólo 17 platillos de 95, con tres desayunos posibles. Eso hay que saberlo antes de generar el menú, no después.',
+      'La proteína se fija en gramos por kilo de peso y no en porcentaje, porque el requerimiento depende del cuerpo y no de cuánto se coma ese día. El resto de la energía se reparte entre grasa e hidratos según el perfil.',
+      'Los equivalentes se calculan desde los ingredientes de cada platillo con la tabla de porciones del sistema. Los 122 ingredientes del recetario están clasificados, así que la cobertura del cálculo es completa.',
+    ],
+  },
+  {
+    v: '1.5.0', fecha: '17 de agosto de 2026', titulo: 'Ajustar la cantidad',
+    nuevo: [
+      'Al registrar algo a mano ahora se puede cambiar la cantidad, y las calorías y los macros se recalculan solos. Tres tortillas cuentan como tres.',
+      'Botones de múltiplo de la porción: ½, 1, 1½, 2 y 3. Para una tortilla dan piezas enteras; para una porción de 150 g de arroz dan 75, 150, 225, 300 y 450 g.',
+      'Los alimentos que registras seguido recuerdan la cantidad con la que los guardaste, y aun así se pueden reajustar.',
+    ],
+    detalles: [
+      'La cantidad y el tiempo de comida quedaron en la misma pantalla en lugar de dos separadas. Registrar algo se hace varias veces al día: un paso de más ahí se siente en el uso diario.',
+    ],
+  },
+  {
+    v: '1.4.1', fecha: '17 de agosto de 2026', titulo: 'Salida cuando el QR no trae código',
+    arreglos: [
+      'Cuando un QR era sólo publicidad, la app decía «captura el producto a mano» pero no daba ningún botón para hacerlo: el único camino visible era buscar por código, que en ese caso no sirve de nada. Ahora hay un botón directo a la captura, y llega con la marca del producto ya escrita, sacada del dominio del QR.',
+      'El texto de ejemplo del campo del código era un número completo, así que parecía un código ya escrito y no se entendía por qué el botón Buscar no respondía. Ahora dice claramente que hay que escribirlo.',
+    ],
+    detalles: [
+      'El mismo botón de captura aparece también cuando el producto no está en la base de datos o no tiene información nutrimental: en los tres casos, buscar por código no lleva a ningún lado y lo que sí funciona debe ser el botón principal, no una nota al pie.',
+    ],
+  },
+  {
+    v: '1.4.0', fecha: '17 de agosto de 2026', titulo: 'Códigos QR y buzón de ideas',
+    nuevo: [
+      'El escáner ahora lee códigos QR y Data Matrix además de los códigos de barras.',
+      'Buzón de mejoras en la pestaña Mis ideas, con prioridad, pantalla y estado de cada una, y exportación al portapapeles.',
+      'Endulzantes y salsas en la lista de alimentos: Splenda, stevia, azúcar, miel, salsas y limón. Ya son 146 alimentos sin conexión.',
+      'Unidades nuevas al capturar a mano: sobre y gotas.',
+    ],
+    detalles: [
+      'Un QR de producto no trae el número a secas: trae una liga cuyo camino codifica el código con el formato /01/. Además el estándar exige rellenarlo a 14 dígitos con ceros a la izquierda, y la base de datos lo tiene guardado como viene impreso. La app extrae el código de la liga, le quita el relleno y prueba las variantes hasta acertar.',
+      'Muchos QR de empaque son sólo publicidad y no traen ningún código dentro. Eso no tiene arreglo técnico: cuando pasa, la app lo detecta, te dice a qué página apuntaba y te deja capturar el producto a mano.',
+      'El caché de productos se consulta por todas las variantes del código, así que un QR encuentra lo que ya habías guardado escaneando el código de barras del mismo producto.',
+    ],
+  },
+  {
+    v: '1.3.0', fecha: '17 de agosto de 2026', titulo: 'Registrar fuera del menú',
+    nuevo: [
+      'Botón para agregar en Hoy cualquier comida que no estuviera en el plan, con su propio tiempo del día.',
+      'Lista de 140 alimentos comunes con su aporte, disponible sin conexión, incluyendo los de dieta líquida y de recuperación.',
+      'Escáner de código de barras con la cámara, conectado a Open Food Facts, con captura del código a mano si la cámara no está disponible.',
+      'Memoria de los alimentos que registras seguido, para reusarlos con dos toques.',
+      'Modo recuperación: pausa los entrenamientos y silencia los avisos de comer poco.',
+    ],
+    arreglos: [
+      'Al tocar fuera de la hoja durante el escaneo, la app daba un paso atrás en lugar de cerrar. Ahora el fondo siempre cierra y cada paso tiene su botón de Atrás.',
+    ],
+    detalles: [
+      'Los productos escaneados se guardan en el teléfono, así que volver a escanear el mismo código funciona sin internet. Los datos de Open Food Facts los aportan voluntarios y pueden estar incompletos: por eso siempre se muestran para revisarlos antes de guardar.',
+      'El modo recuperación existe porque sin él la app señalaría a alguien convaleciente por comer poco, que es justo lo contrario de lo que necesita leer.',
+    ],
+  },
+  {
+    v: '1.2.0', fecha: '17 de agosto de 2026', titulo: 'Ilustraciones y manual',
+    nuevo: [
+      'Dibujo de referencia en cada uno de los 73 platillos, visible en Hoy, en la Semana, en el Recetario y al sustituir una comida.',
+      'Figura de la posición en cada uno de los 55 ejercicios, con vista ampliada al abrir el detalle.',
+      'Manual de usuario completo dentro de la app, con ocho secciones.',
+      'Esta pantalla de notas de versión.',
+    ],
+    detalles: [
+      'Las ilustraciones se dibujan con código dentro de la app, no son imágenes descargadas. Por eso siguen funcionando sin internet, se ven nítidas en cualquier pantalla y casi no ocupan espacio.',
+    ],
+  },
+  {
+    v: '1.1.0', fecha: '17 de agosto de 2026', titulo: 'Entrenamiento',
+    nuevo: [
+      'Días fijos de entrenamiento: al registrarlos, la meta de comida de esos días sube sola.',
+      'Generador de rutinas para casa o gimnasio, con 55 ejercicios, cuatro objetivos y tres duraciones.',
+      'Objetivo específico de rendimiento en voleibol: salto, hombro y tobillo.',
+      'Bitácora de entrenamiento cruzada con la alimentación del día.',
+    ],
+    detalles: [
+      'El gasto de cada sesión se calcula con METs y se le resta un MET, porque ese reposo ya lo cuenta el metabolismo basal. Sin esa resta, la app sobreestimaría el día.',
+      'El campo de actividad del perfil ahora aclara que debe describir sólo el día normal, sin los entrenamientos, para no contarlos dos veces.',
+      'Familia se movió dentro de Progreso como pestaña, para que la barra de abajo no se saturara.',
+    ],
+  },
+  {
+    v: '1.0.1', fecha: '17 de agosto de 2026', titulo: 'Control de despensa',
+    nuevo: [
+      'Inventario de lo que hay en casa, agrupado por pasillo.',
+      'La lista del súper descuenta la despensa y pide sólo lo que falta.',
+      'Botón para pasar de una vez al inventario todo lo que tachaste en el carrito.',
+      'Al marcar una comida como hecha, sus ingredientes se descuentan solos.',
+    ],
+    arreglos: [
+      'Corregido un error que inventaba comida: si tenías 2 tortillas y la receta pedía 4, la despensa bajaba a cero pero al desmarcar la comida te devolvía 4. Ahora se registra lo que en realidad se consumió y se devuelve exactamente eso.',
+    ],
+  },
+  {
+    v: '1.0.0', fecha: '17 de agosto de 2026', titulo: 'Primera versión',
+    nuevo: [
+      'Menús de cinco tiempos para toda la familia, con porciones proporcionales a cada persona.',
+      'Recetario de 73 platillos caseros del Bajío, con alta de recetas propias.',
+      'Generador de menús para una semana, un mes o un año, con control de repetición.',
+      'Lista del súper automática, agrupada por pasillo.',
+      'Registro diario de comidas y agua.',
+      'Seguimiento de peso, cintura, cadera y pecho con gráfica de tendencia.',
+      'Funciona sin internet e instalable como app.',
+    ],
+  },
+];
+
+// Negritas con **texto**, sin dependencias externas.
+function Texto({ children }) {
+  const partes = String(children).split(/(\*\*[^*]+\*\*)/g);
+  return <>{partes.map((x, i) => x.startsWith('**') && x.endsWith('**')
+    ? <b key={i}>{x.slice(2, -2)}</b> : <React.Fragment key={i}>{x}</React.Fragment>)}</>;
+}
+
+export function PantallaAyuda({ Hoja, estado, actualizar, pantallaPrevia }) {
+  const [vista, setVista] = useState('manual');
+  const [abierta, setAbierta] = useState(null);
+
+  return (<>
+    <div className="chips">
+      <button className={'chip' + (vista === 'manual' ? ' on' : '')} onClick={() => setVista('manual')}>Manual</button>
+      <button className={'chip' + (vista === 'notas' ? ' on' : '')} onClick={() => setVista('notas')}>Novedades</button>
+      <button className={'chip' + (vista === 'mejoras' ? ' on' : '')} onClick={() => setVista('mejoras')}>
+        Mis ideas{(estado.mejoras || []).filter((m) => m.estado !== 'lista').length
+          ? ` · ${(estado.mejoras || []).filter((m) => m.estado !== 'lista').length}` : ''}
+      </button>
+    </div>
+
+    {vista === 'mejoras' ? <PantallaMejoras {...{ estado, actualizar, pantallaPrevia, Hoja }} />
+      : vista === 'manual' ? (<>
+      {MANUAL.map((sec) => (
+        <div className="tarjeta" key={sec.t} style={{ cursor: 'pointer' }} onClick={() => setAbierta(sec)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
+            <div style={{
+              width: 42, height: 42, borderRadius: 11, background: 'var(--cobalto-lavado)',
+              display: 'grid', placeItems: 'center', fontSize: 19, color: 'var(--cobalto)', flexShrink: 0,
+            }}>{sec.icono}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: 'var(--display)', fontSize: 16.5, fontWeight: 600 }}>{sec.t}</div>
+              <div style={{ fontSize: 12, color: 'var(--tinta-suave)' }}>
+                {sec.p.length} {sec.p.length === 1 ? 'punto' : 'puntos'}
+              </div>
+            </div>
+            <span style={{ color: 'var(--tinta-suave)', fontSize: 17 }}>›</span>
+          </div>
+        </div>
+      ))}
+      <p className="nota">Mesa versión {VERSION}. Toda la información se guarda en este dispositivo.</p>
+    </>) : (<>
+      {NOTAS.map((n, i) => (
+        <div className="tarjeta" key={n.v}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+            <div style={{ fontFamily: 'var(--display)', fontSize: 17, fontWeight: 600 }}>{n.titulo}</div>
+            <span className={'pildora' + (i === 0 ? '' : ' gris')}>v{n.v}</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--tinta-suave)', marginBottom: 11 }}>{n.fecha}</div>
+
+          {n.nuevo && (<>
+            <div className="comida-tiempo" style={{ marginBottom: 5 }}>Nuevo</div>
+            {n.nuevo.map((x, j) => (
+              <div key={j} style={{ display: 'flex', gap: 8, marginBottom: 6, fontSize: 13.5, lineHeight: 1.45 }}>
+                <span style={{ color: 'var(--jade)', flexShrink: 0 }}>+</span><span>{x}</span>
+              </div>
+            ))}
+          </>)}
+
+          {n.arreglos && (<>
+            <div className="comida-tiempo" style={{ margin: '12px 0 5px' }}>Arreglado</div>
+            {n.arreglos.map((x, j) => (
+              <div key={j} style={{ display: 'flex', gap: 8, marginBottom: 6, fontSize: 13.5, lineHeight: 1.45 }}>
+                <span style={{ color: 'var(--achiote)', flexShrink: 0 }}>✓</span><span>{x}</span>
+              </div>
+            ))}
+          </>)}
+
+          {n.detalles && (<>
+            <div className="comida-tiempo" style={{ margin: '12px 0 5px' }}>Por qué</div>
+            {n.detalles.map((x, j) => (
+              <p key={j} className="nota" style={{ marginTop: 0, marginBottom: 6 }}>{x}</p>
+            ))}
+          </>)}
+        </div>
+      ))}
+    </>)}
+
+    {abierta && (
+      <Hoja titulo={abierta.t} onCerrar={() => setAbierta(null)}>
+        {abierta.p.map(([titulo, cuerpo], i) => (
+          <div key={i} style={{ marginBottom: 17 }}>
+            <div style={{ fontWeight: 600, fontSize: 14.5, marginBottom: 3 }}>{titulo}</div>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: 'var(--tinta-media)' }}>
+              <Texto>{cuerpo}</Texto>
+            </p>
+          </div>
+        ))}
+      </Hoja>
+    )}
+  </>);
+}
